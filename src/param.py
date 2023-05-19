@@ -1,22 +1,26 @@
 import torch
 import sys
+from time import strftime, localtime
 
 sys.path.append("./dataset")
 sys.path.append("./server")
 sys.path.append("./client")
 sys.path.append("./network")
 sys.path.append("./model")
+sys.path.append("./test")
 
 # System
 SEED = 114
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-DEBUG = True
+
+LOG_PATH = "/home/zhangtl/PFL/log/"
+LOG_NAME = strftime("%Y-%m-%d_%H-%M/", localtime())
 
 # Network
 
 COMM = "fake_socket"
 IP_ADDRESS = "127.0.0.1"
-IP_PORT = "11454"
+IP_PORT = "11453"
 
 BUFFER_SIZE = 8192
 DIST_BACKEND = "gloo"
@@ -29,7 +33,7 @@ MODEL = "VGG_Mini"
 MODEL_PARAM = {"input_size":784, "output_size": 10, "channel": 1}
 
 N_NODES = 11
-N_EPOCH = 2
+N_EPOCH = 1
 
 CRITERION = "CrossEntropy"
 OPTIMIZER = "SGD"
@@ -38,7 +42,8 @@ BATCH_SIZE_TEST = 1000
 LEARNING_RATE = 0.005
 
 # LDP-FL
-N_ROUND = 10
-KAP = [1] * N_ROUND
+N_ROUND = 40
+KAP = [10] * N_ROUND
+BAD_CLIENTS = []
 LATENCY_T = 10
-EPS = 8
+EPS = 4

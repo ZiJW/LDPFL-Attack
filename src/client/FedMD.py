@@ -1,7 +1,7 @@
 import torch
 
 from base_client import Base_client
-from util import log, load_dataset, load_model, load_criterion, load_optimizer
+from util import load_dataset, load_model, load_criterion, load_optimizer
 from param import DEVICE
 import param
 

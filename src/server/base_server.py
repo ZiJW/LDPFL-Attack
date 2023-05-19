@@ -1,12 +1,22 @@
 from abc import ABC, abstractmethod
 import torch
-from network import load_comm
+import logging
 from tqdm import tqdm
 import param
-from util import log, load_model
+import os
+
+from network import load_comm
+from util import load_model
 
 class Base_server(ABC):
     def __init__(self, size, Model, Model_param, Epoch, comm="dist"):
+        self.log_path = param.LOG_PATH + param.LOG_NAME
+        if not os.path.exists(self.log_path):
+            os.mkdir(self.log_path)
+            os.mkdir(self.log_path + "model")
+        logging.basicConfig(filename=self.log_path + "/log_server.txt", format="%(asctime)s [%(levelname)s]: %(message)s", filemode="w", level=logging.INFO)
+        os.system("cp param.py " + self.log_path)
+
         self.epoch = Epoch
         self.size = size
         self.id = 0
@@ -54,7 +64,8 @@ class Base_server(ABC):
         # print("sum = {:.9f}, mean = {:.9f}, max = {:.9f}, min = {:.9f}".format(sum(LossList), sum(LossList) / len(self.test_loader), max(LossList), min(LossList)))
         Acc = Acc / N
         Loss = Loss / len(self.test_loader)
-        print('(Server) Epoch: {} Acc = {:.3f}, Loss: {:.9f}'.format(ep, Acc, Loss))
+        logging.info('(Server) Epoch: {} Acc = {:.3f}, Loss: {:.9f}'.format(ep, Acc, Loss))
+        # print('(Server) Epoch: {} Acc = {:.3f}, Loss: {:.9f}'.format(ep, Acc, Loss))
 
     @abstractmethod
     def evaluate(self):
