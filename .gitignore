@@ -1,0 +1,6 @@
+src/__pycache__/
+src/server/__pycache__
+src/client/__pycache__
+src/dataset/__pycache__
+src/model/__pycache__
+src/network/__pycache__
