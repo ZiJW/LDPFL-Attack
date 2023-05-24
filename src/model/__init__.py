@@ -5,9 +5,11 @@ import torch.nn.functional as F
 import model.MLP_model
 import model.ConvNet_model
 import model.VGG_model
+import model.LR_model
 
 from param import DEVICE
 
+LR = model.LR_model.LR
 MLP = model.MLP_model.MLP
 MLP_with_Conf = model.MLP_model.MLP_with_Conf
 ConvNet = model.ConvNet_model.ConvNet
@@ -17,6 +19,8 @@ VGG16 = model.VGG_model.VGG16
 def load_model(Model: str, Param: dict):
     if Model == "None":
         return None
+    elif Model == "LR":
+        return LR(Param["input_size"], Param["output_size"]).to(DEVICE)
     elif Model == "MLP":
         return MLP(Param["input_size"], Param["output_size"]).to(DEVICE)
     elif Model == "ConvNet":

@@ -4,6 +4,7 @@ import param
 
 import math
 import random
+import numpy as np
 
 from param import DEVICE
 from model import *
@@ -60,3 +61,49 @@ def data_pertubation(W, c: float, r: float, eps: float):
         else:
             res = c - r * coff
         return res
+    
+def ExpM(V, eps):
+    d = len(V)
+    pr = torch.exp(eps*V/(d-1))
+    pr = np.asarray(pr.div(torch.sum(pr)).cpu().numpy()).astype('float64')
+    pr = pr/np.sum(pr)
+    index = np.random.choice(range(d), p=pr)
+    return index
+
+def pm_perturbation(query_result, clip, epsilon):
+    if query_result>clip:
+        query_result = clip
+    if query_result<-clip:
+        query_result = -clip
+
+    if type(query_result) is torch.Tensor:
+        query_result = query_result.cpu().numpy()
+    tran_x = query_result / clip
+    noisy_query = []
+    
+    ee2 = np.exp(epsilon/2)
+    ee = np.exp(epsilon)
+    s = (ee2 + 1) / (ee2 - 1)
+    
+    l = (ee2 * tran_x - 1) / (ee2 - 1)
+    r = (ee2 * tran_x + 1) / (ee2 - 1)
+    r1 = np.random.uniform(0, 1)
+    if r1 < ee2 / (ee2 + 1):
+        noisy_query = np.random.uniform(l, r)
+    else:
+        len1 = l + s
+        len2 = s - r
+
+        if np.random.random() < len1 / (len1 + len2):
+            noisy_query = np.random.uniform(-s, l)
+        else:
+            noisy_query = np.random.uniform(r, s)
+
+    return noisy_query
+
+
+def pm_aggregation(noisy_reports, clip):
+    result = []
+    for x in noisy_reports:
+        result.append(x * clip)
+    return np.mean(result)

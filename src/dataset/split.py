@@ -105,10 +105,10 @@ def split_train_test_iid(NAME: str, N_clients: int, folder_name: str):
 if __name__ == "__main__":
     # split_train_test_non_iid("MNIST", "non_iid_5_p=0.9")
     # split_public_train_test("MNIST", "non_iid_5")
-    # split_train_test_iid("MNIST", 10, "iid_10")
+    split_train_test_iid("MNIST", 10, "iid_10")
 
-    train_dataset, test_dataset = get_dataset("MNIST")
-    with open("./{}/{}/train.pkl".format("MNIST", "all"), "wb") as F:
-        pickle.dump(train_dataset, F)
-    with open("./{}/{}/test.pkl".format("MNIST", "all"), "wb") as F:
-        pickle.dump(test_dataset, F)
+    # train_dataset, test_dataset = get_dataset("MNIST")
+    # with open("./{}/{}/train.pkl".format("MNIST", "all"), "wb") as F:
+    #     pickle.dump(train_dataset, F)
+    # with open("./{}/{}/test.pkl".format("MNIST", "all"), "wb") as F:
+    #     pickle.dump(test_dataset, F)

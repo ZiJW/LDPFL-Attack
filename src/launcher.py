@@ -1,19 +1,18 @@
 import param
 from util import set_random_seed
-
-from server import LDPFL_server
-from client import LDPFL_client
-
+from server.LDP_FL import LDPFL_server
+from client.LDP_FL import LDPFL_client
+from server.FedSel import FedSel_server
+from client.FedSel import FedSel_client
 import torch.multiprocessing as mp
-
 def client_run(*args):
     set_random_seed(param.SEED)
-    A = LDPFL_client(*args)
+    A = FedSel_client(*args)
     A.evaluate()
 
 def server_run(*args):
     set_random_seed(param.SEED)
-    A = LDPFL_server(*args)
+    A = FedSel_server(*args)
     A.evaluate()
 
 if __name__ == "__main__":

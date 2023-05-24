@@ -3,7 +3,7 @@ from tqdm import tqdm
 
 from util import load_dataset, load_criterion
 import param
-from base_server import Base_server
+from server.base_server import Base_server
 
 class FedAvg_server(Base_server):
     

@@ -33,7 +33,7 @@ class Base_client(ABC):
         else:
             raise ValueError("Invalid serialize type: {}".format(type))
         return res
-    
+
     def unserialize_model(self, parameters: torch.Tensor):
         current_index = 0
         for val in self.model.state_dict().values():
