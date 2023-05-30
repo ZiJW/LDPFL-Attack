@@ -25,7 +25,7 @@ class Adult_dataset(Dataset):
         print("train" if self.train else "test")
         df.info()
         X, Y = df.drop("income", axis=1), df["income"]
-        # return X.to_numpy(dtype=np.int32), Y.to_numpy(dtype=np.int32)
+        # return X, Y
         return torch.from_numpy(X.to_numpy(dtype=np.int32)), torch.tensor(Y.to_numpy(dtype=np.int32))
 
     def __len__(self):
