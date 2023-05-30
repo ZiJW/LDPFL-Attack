@@ -1,5 +1,7 @@
 import pickle
 import random
+import numpy as np
+
 import os
 import time
 from baseDataset import base_dataset, get_dataset
@@ -21,21 +23,32 @@ def split_iid(dataset_name: str, dataset, N_clients: int, folder_name: str = Non
     random.shuffle(ind)
 
     samples, labels = [], []
-    clients_dataset = [{"sample": [], "label": []} for i in range(N_clients)]
     for x, y in dataset:
-        samples.append(x)
-        labels.append(y)
-
-    for idx in range(N_clients):
-        for i in range(size):
-            pos = ind[idx * size + i]
-            clients_dataset[idx]["sample"].append(samples[pos])
-            clients_dataset[idx]["label"].append(labels[pos])
+        samples.append(x.numpy())
+        if type(y) == int:
+            labels.append(y)
+        else:
+            raise TypeError("Unknown label type: {}".format(type(y)))
     
-    clients_dataset_torch = [base_dataset(clients_dataset[i]["sample"], clients_dataset[i]["label"]) for i in range(N_clients)]
     for idx in range(N_clients):
-        with open("./{}/{}/{}_{}.pkl".format(dataset_name, folder_name, file_name, idx + 1), "wb") as F:
-            pickle.dump(clients_dataset_torch[idx], F)
+        client_samples = np.stack([samples[ind[idx * size + i]] for i in range(size)])
+        if type(labels[0]) == int:
+            client_labels  = np.array([labels[ind[idx * size + i]] for i in range(size)])
+        else:
+            raise TypeError("Unknown label type: {}".format(type(labels[0])))
+    
+        np.save("./{}/{}/{}_samples_{}.pkl".format(dataset_name, folder_name, file_name, idx + 1), client_samples)
+        np.save("./{}/{}/{}_labels_{}.pkl".format(dataset_name, folder_name, file_name, idx + 1), client_labels)
+
+        # break
+    # clients_dataset_torch = [base_dataset(clients_dataset[i]["sample"], clients_dataset[i]["label"]) for i in range(N_clients)]
+    # for idx in range(N_clients):
+    #     with open("./{}/{}/{}_{}.pkl".format(dataset_name, folder_name, file_name, idx + 1), "wb") as F:
+    #         pickle.dump(clients_dataset_torch[idx], F)
+        
+    #     st = pickle.dumps(clients_dataset_torch[idx])
+    #     print(st)
+    #     break
 
 def split_on_label(dataset_name: str, dataset, N_labels: int, slices: list, folder_name: str = None, file_name : str = "train", prob : float = 1.0):
     folder_name = handle_folder_name(dataset_name, folder_name)

@@ -1,20 +1,13 @@
 import pickle
 import torch
 import param
-
-import math
 import random
 import numpy as np
-
 from param import DEVICE
 from model import *
 
 from torch.utils.data import DataLoader
 
-def log(info: str):
-    if param.DEBUG:
-        print(info)
-        
 # ---------------------- set random seed --------------------
 
 def set_random_seed(seed):

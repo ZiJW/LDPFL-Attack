@@ -1,15 +1,23 @@
 from abc import ABC, abstractmethod
 import torch
+import logging
+import time
+
 from network import load_comm
-from util import log, load_dataset
 from model import load_model, load_criterion, load_optimizer
 from param import DEVICE
+import param
 
 class Base_client(ABC):
     """
         Base client class (abstract).
     """
     def __init__(self, id, size, Model, Model_param, Optimizer, Learning_rate, Criterion, comm="dist"):
+        time.sleep(id)
+        
+        self.log_path = param.LOG_PATH + param.LOG_NAME
+        logging.basicConfig(filename=self.log_path + "/log_client{}.txt".format(id), format="%(asctime)s [%(levelname)s]: %(message)s", filemode="w", level=logging.DEBUG)
+    
         self.id = id
         self.size = size
         self.comm = load_comm(comm, id, size)

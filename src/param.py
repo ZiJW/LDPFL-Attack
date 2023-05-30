@@ -1,22 +1,28 @@
 import torch
 import sys
+from time import strftime, localtime
+
 sys.path.append("./dataset")
 sys.path.append("./server")
 sys.path.append("./client")
 sys.path.append("./network")
 sys.path.append("./model")
+sys.path.append("./test")
+
 # System
 SEED = 114
 # DEVICE = torch.device("cpu")
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-DEBUG = True
+
+LOG_PATH = "/home/zhangtl/PFL/log/"
+LOG_NAME = strftime("%Y-%m-%d_%H-%M/", localtime())
 
 # System
 # Network
 
 COMM = "fake_socket"
 IP_ADDRESS = "127.0.0.1"
-IP_PORT = "11451"
+IP_PORT = "11453"
 
 BUFFER_SIZE = 8192
 DIST_BACKEND = "gloo"
@@ -29,7 +35,7 @@ MODEL = "LR"
 MODEL_PARAM = {"input_size":784, "output_size": 10, "channel": 1}
 
 N_NODES = 11
-N_EPOCH = 2
+N_EPOCH = 1
 
 CRITERION = "CrossEntropy"
 OPTIMIZER = "SGD"
