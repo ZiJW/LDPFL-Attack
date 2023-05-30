@@ -1,6 +1,7 @@
 import pickle
 import random
 import numpy as np
+import torch
 
 import os
 import time
@@ -24,9 +25,15 @@ def split_iid(dataset_name: str, dataset, N_clients: int, folder_name: str = Non
 
     samples, labels = [], []
     for x, y in dataset:
-        samples.append(x.numpy())
+        if type(x) == torch.Tensor:
+            samples.append(x.numpy())
+        else:
+            raise TypeError("Unknown sample type: {}".format(type(x)))
+
         if type(y) == int:
             labels.append(y)
+        elif type(y) == torch.Tensor:
+            labels.append(y.numpy())
         else:
             raise TypeError("Unknown label type: {}".format(type(y)))
     
@@ -34,6 +41,8 @@ def split_iid(dataset_name: str, dataset, N_clients: int, folder_name: str = Non
         client_samples = np.stack([samples[ind[idx * size + i]] for i in range(size)])
         if type(labels[0]) == int:
             client_labels  = np.array([labels[ind[idx * size + i]] for i in range(size)])
+        elif type(labels[0]) == torch.Tensor:
+            client_labels  = np.stack([labels[ind[idx * size + i]] for i in range(size)])
         else:
             raise TypeError("Unknown label type: {}".format(type(labels[0])))
     
