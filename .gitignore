@@ -4,3 +4,5 @@ src/client/__pycache__
 src/dataset/__pycache__
 src/model/__pycache__
 src/network/__pycache__
+src/dataset/adult/
+src/dataset/MNIST/
