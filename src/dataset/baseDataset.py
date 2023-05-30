@@ -1,5 +1,6 @@
 from torch.utils.data import Dataset
 from torchvision import datasets, transforms
+from adultDataset import Adult_dataset
 
 class base_dataset(Dataset):
     def __init__(self, x, y):
@@ -28,6 +29,9 @@ def get_dataset(dataset: str):
                                     transforms.Normalize(
                                         (0.1307,), (0.3081,))
                                 ]))
+    elif dataset == "adult":
+        train_dataset = Adult_dataset('./', train=True)
+        test_dataset = Adult_dataset('./', train=False)
     else:
         raise ValueError("Unknown dataset: {}".format(dataset))
     

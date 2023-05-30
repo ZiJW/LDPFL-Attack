@@ -17,7 +17,7 @@ def split_iid(dataset_name: str, dataset, N_clients: int, folder_name: str = Non
 
     size = len(dataset) // N_clients
     ind = list(range(len(dataset)))
-    
+
     random.shuffle(ind)
 
     samples, labels = [], []
@@ -25,13 +25,13 @@ def split_iid(dataset_name: str, dataset, N_clients: int, folder_name: str = Non
     for x, y in dataset:
         samples.append(x)
         labels.append(y)
-    
+
     for idx in range(N_clients):
         for i in range(size):
             pos = ind[idx * size + i]
             clients_dataset[idx]["sample"].append(samples[pos])
             clients_dataset[idx]["label"].append(labels[pos])
-
+    
     clients_dataset_torch = [base_dataset(clients_dataset[i]["sample"], clients_dataset[i]["label"]) for i in range(N_clients)]
     for idx in range(N_clients):
         with open("./{}/{}/{}_{}.pkl".format(dataset_name, folder_name, file_name, idx + 1), "wb") as F:
@@ -105,7 +105,7 @@ def split_train_test_iid(NAME: str, N_clients: int, folder_name: str):
 if __name__ == "__main__":
     # split_train_test_non_iid("MNIST", "non_iid_5_p=0.9")
     # split_public_train_test("MNIST", "non_iid_5")
-    split_train_test_iid("MNIST", 10, "iid_10")
+    split_train_test_iid("adult", 10, "iid_10")
 
     # train_dataset, test_dataset = get_dataset("MNIST")
     # with open("./{}/{}/train.pkl".format("MNIST", "all"), "wb") as F:

@@ -22,7 +22,7 @@ BUFFER_SIZE = 8192
 DIST_BACKEND = "gloo"
 
 #   Training hyper parameters
-DATASET = "MNIST"
+DATASET = "adult"
 FOLDER = "iid_10"
 
 MODEL = "LR"
