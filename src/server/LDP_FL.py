@@ -38,7 +38,7 @@ class LDPFL_server(Base_server):
     def collect_weights(self, idx: int):
         for ln in range(len(self.model_size)):
             msg = self.comm.recv(idx)
-            self.weights_buffer[msg["ln"]].put(msg["weight"])
+            self.weights_buffer[msg["ln"]].put((idx, msg["weight"]))
             if ln < len(self.model_size) - 1: 
                 self.comm.send(idx, "ACK")
             
@@ -54,9 +54,12 @@ class LDPFL_server(Base_server):
         weight_range = []
         for idx, weight in enumerate(global_model):
             mini, maxi = torch.min(weight), torch.max(weight)
-            new_range = (float)((maxi - mini) / 2) if self.last_range[idx] == None else self.last_range[idx]
-            self.last_range[idx] = new_range * 0.98
-            weight_range.append({"center": (float)((mini + maxi) / 2), "range": new_range})
+
+            new_range = {"center": (float)((mini + maxi) / 2), "range": (float)((maxi - mini) / 2) if self.last_range[idx] == None else self.last_range[idx]}
+            # new_range = {"center": (float)((mini + maxi) / 2), "range": (float)((maxi - mini) / 2)}
+            # new_range = (float)((maxi - mini) / 2) if self.last_range[idx] == None else self.last_range[idx]
+            self.last_range[idx] = new_range["range"] * 0.995
+            weight_range.append(new_range)
         global_model = torch.cat(global_model)
 
         if param.COMM == "socket":
@@ -83,10 +86,18 @@ class LDPFL_server(Base_server):
         res = []
         for ln in range(len(self.model_size)):
             weight = []
-            for idx in chose:
-                weight.append(self.weights_buffer[ln].get())
-            weight = torch.stack(weight)
-            weight = torch.mean(weight, dim=0)
+            if param.CLIENTS_WEIGHTS == None:
+                for _ in chose:
+                    idx, wt = self.weights_buffer[ln].get()
+                    weight.append(wt)
+                weight = torch.stack(weight)
+                weight = torch.mean(weight, dim=0)
+            else:
+                for _ in chose:
+                    idx, wt = self.weights_buffer[ln].get()
+                    weight.append(wt * (param.CLIENTS_WEIGHTS[idx] / sum(param.CLIENTS_WEIGHTS)))
+                weight = torch.stack(weight)
+                weight = torch.sum(weight, dim=0)
             res.append(weight)
         
         res = torch.cat(res)
