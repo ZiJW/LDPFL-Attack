@@ -6,7 +6,7 @@ import param
 import os
 
 from network import load_comm
-from util import load_model
+from model import load_model
 
 class Base_server(ABC):
     def __init__(self, size, Model, Model_param, Epoch, comm="dist"):

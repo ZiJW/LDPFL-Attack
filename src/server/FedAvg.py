@@ -1,7 +1,8 @@
 import torch
 from tqdm import tqdm
 
-from util import load_dataset, load_criterion
+from util import load_dataset
+from model import load_criterion
 import param
 from server.base_server import Base_server
 
