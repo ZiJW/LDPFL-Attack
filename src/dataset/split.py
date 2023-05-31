@@ -41,7 +41,7 @@ def split_iid(dataset_name: str, dataset, N_clients: int, folder_name: str = Non
         client_samples = np.stack([samples[ind[idx * size + i]] for i in range(size)])
         if type(labels[0]) == int:
             client_labels  = np.array([labels[ind[idx * size + i]] for i in range(size)])
-        elif type(labels[0]) == torch.Tensor:
+        elif type(labels[0]) == np.ndarray:
             client_labels  = np.stack([labels[ind[idx * size + i]] for i in range(size)])
         else:
             raise TypeError("Unknown label type: {}".format(type(labels[0])))
