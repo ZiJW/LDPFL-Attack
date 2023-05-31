@@ -2,45 +2,32 @@ import random
 import time
 import math
 import logging
+import torch
 
 from base_client import Base_client
-from util import load_dataset, load_model, load_criterion, load_optimizer
+from util import load_dataset
 import param
 from param import DEVICE
-
-def data_pertubation(W, c: float, r: float, eps: float, type: str = "normal"):
-    try:
-        temp = iter(W)
-        L = len(W)
-        for idx in range(L):
-            W[idx] = data_pertubation((float)(W[idx]), c, r, eps)
-        return None
-    except TypeError:
-        # assert (c - r <= W) and (W <= c + r)
-        if (c - r > W) or (W > c + r):
-            # logging.warning("Param {:.3f} exceed [{:.3f}, {:.3f}], clip.".format(W, c - r, c + r))
-            W = max(W, c - r)
-            W = min(W, c + r)
-            
-        coff = (math.exp(eps) + 1) / (math.exp(eps) - 1)
-        Pb = (((W - c) / coff) + r)
-        # print('--> > {}, {} ({}, {})'.format(coff, Pb, c, r))
-        if random.random() * (2.0 * r) < Pb:
-            if type == "normal":
-                res = c + r * coff
-            elif type == "bad":
-                res = c - r * coff
-            else:
-                raise ValueError("Unknown pertubation type: {}".format(type))
-        else:
-            if type == "normal":
-                res = c - r * coff
-            elif type == "bad":
-                res = c + r * coff
-            else:
-                raise ValueError("Unknown pertubation type: {}".format(type))
-        return res
     
+def data_pertubation(W, c: float, r: float, eps: float, type: str = "normal"):
+    sz = len(W)
+    with torch.no_grad():
+        # torch.clamp(W, min=c-r, max=c+r)
+        coff = (math.exp(eps) + 1) / (math.exp(eps) - 1)
+
+        Pb = (((W - c) / coff) + r)
+        rnd = (torch.rand(sz) * 2.0 * r).to(DEVICE)
+        cmp = torch.gt(Pb, rnd).to(DEVICE)
+        if type == "bad":
+            cmp = ~cmp
+        # logging.debug("[{:.3f}, {:.3f}]:".format(c - r, c + r))
+        # logging.debug("Pb = {}".format(Pb[:10]))
+        # logging.debug("rnd = {}".format(rnd[:10]))
+        # logging.debug("cmp = {}".format(cmp[:10]))
+
+        res = ((cmp) * (c + r * coff)) + ((~cmp) * (c - r * coff))
+    return res
+
 class LDPFL_client(Base_client):
     """
         The client in LDP-FL
@@ -51,6 +38,11 @@ class LDPFL_client(Base_client):
         self.train_loader, = load_dataset(param.DATASET, param.FOLDER, [("train", True)], idx=self.id)
         self.epoch = param.N_EPOCH
         self.round = param.N_ROUND
+
+        if param.CLIENTS_WEIGHTS != None:
+            logging.info("Client {} has weight {}".format(self.id, param.CLIENTS_WEIGHTS[self.id]))
+        if self.id in param.BAD_CLIENTS:
+            logging.info("Client {} is an adversary!".format(self.id))
 
     def chose(self):
         logging.debug("Client {}: wait for invitation ...".format(self.id))
@@ -68,14 +60,17 @@ class LDPFL_client(Base_client):
         logging.debug("Client {}: get global weights from server".format(self.id))
 
         self.unserialize_model(global_model)
-        logging.debug("Client {}: training ...".format(self.id))
+        logging.debug("Client {}: training({}) ...".format(self.id, len(self.train_loader)))
         for ep in range(self.epoch):
             for batch_idx, (data, target) in enumerate(self.train_loader):
                 # Training
                 data, target = data.to(DEVICE), target.to(DEVICE)
                 self.optimizer.zero_grad()
                 output = self.model(data)
-                loss = self.criterion(output, target)
+                if self.id in param.BAD_CLIENTS:
+                    loss = -self.criterion(output, target)
+                else:
+                    loss = self.criterion(output, target)
                 loss.backward()
                 self.optimizer.step()
         return weight_range
@@ -87,12 +82,7 @@ class LDPFL_client(Base_client):
         global_model = self.serialize_model(type="raw")
         for idx in range(len(global_model)):
             logging.debug("Client {}: [{}] c={}, r={}".format(self.id, idx, weight_range[idx]["center"], weight_range[idx]["range"]))
-            if self.id in param.BAD_CLIENTS:
-                logging.debug("Client {}: trick time!".format(self.id))
-                # bad client
-                data_pertubation(global_model[idx], weight_range[idx]["center"], weight_range[idx]["range"], param.EPS, type="bad")
-            else:
-                data_pertubation(global_model[idx], weight_range[idx]["center"], weight_range[idx]["range"], param.EPS)
+            global_model[idx] = data_pertubation(global_model[idx], weight_range[idx]["center"], weight_range[idx]["range"], param.EPS)
         return global_model
     
     def send_weights(self, global_model):
@@ -103,6 +93,7 @@ class LDPFL_client(Base_client):
                 time.sleep(lt)
             else:
                 time.sleep(lt - latency[idx - 1][0])
+            logging.debug("Send layer {} = {}".format(ln, global_model[ln][:10]))
             self.comm.send(0, {"ln": ln, "weight": global_model[ln]})
             if idx < len(latency) - 1:
                 assert self.comm.recv(0) == "ACK"

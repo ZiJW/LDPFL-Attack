@@ -6,14 +6,14 @@ from client import LDPFL_client
 
 import torch.multiprocessing as mp
 
-def client_run(*args):
-    set_random_seed(param.SEED)
-    A = LDPFL_client(*args)
+def client_run(idx: int):
+    set_random_seed(param.SEED + idx)
+    A = LDPFL_client(idx)
     A.evaluate()
 
-def server_run(*args):
+def server_run():
     set_random_seed(param.SEED)
-    A = LDPFL_server(*args)
+    A = LDPFL_server()
     A.evaluate()
 
 if __name__ == "__main__":

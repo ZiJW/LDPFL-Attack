@@ -1,13 +1,11 @@
 import pickle
 import torch
-import param
-
+from torch.utils.data import DataLoader
 import random
 
+import param
 from param import DEVICE
-from model import *
 
-from torch.utils.data import DataLoader
 
 # ---------------------- set random seed --------------------
 
