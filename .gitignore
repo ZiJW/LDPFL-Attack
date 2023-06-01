@@ -6,3 +6,4 @@ src/model/__pycache__
 src/network/__pycache__
 src/dataset/adult/
 src/dataset/MNIST/
+src/log/

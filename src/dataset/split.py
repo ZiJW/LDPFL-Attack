@@ -46,8 +46,8 @@ def split_iid(dataset_name: str, dataset, N_clients: int, folder_name: str = Non
         else:
             raise TypeError("Unknown label type: {}".format(type(labels[0])))
     
-        np.save("./{}/{}/{}_samples_{}.pkl".format(dataset_name, folder_name, file_name, idx + 1), client_samples)
-        np.save("./{}/{}/{}_labels_{}.pkl".format(dataset_name, folder_name, file_name, idx + 1), client_labels)
+        np.save("./{}/{}/{}_samples_{}".format(dataset_name, folder_name, file_name, idx + 1), client_samples)
+        np.save("./{}/{}/{}_labels_{}".format(dataset_name, folder_name, file_name, idx + 1), client_labels)
 
         # break
     # clients_dataset_torch = [base_dataset(clients_dataset[i]["sample"], clients_dataset[i]["label"]) for i in range(N_clients)]

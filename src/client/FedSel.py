@@ -1,8 +1,8 @@
 import torch
-
+import logging
 from base_client import Base_client
-from model import load_model
-from util import log, load_dataset, load_criterion, load_optimizer, ExpM, pm_perturbation
+from model import load_model, load_criterion, load_optimizer
+from util import load_dataset, ExpM, pm_perturbation
 from param import DEVICE
 import param
 
@@ -23,22 +23,22 @@ class FedSel_client(Base_client):
         """
             Training for 1 round.
         """
-        log("Client {}: wait for invitation ...".format(self.id))
+        logging.debug("Client {}: wait for invitation ...".format(self.id))
 
         chose = self.comm.recv(0)
         
-        log("Client {}: receive invitation {}".format(self.id, chose))
+        logging.debug("Client {}: receive invitation {}".format(self.id, chose))
         if not chose:
             # Not chosen this round.
             self.comm.send(0, "ACK")
             return
         else:
             # send batch number to server
-            log("Client {}: send batch number {} to server".format(self.id, len(self.train_loader)))
+            logging.debug("Client {}: send batch number {} to server".format(self.id, len(self.train_loader)))
             self.comm.send(0, len(self.train_loader))
 
         batch_num = self.comm.recv(0)
-        log("Client {}: receive batchnum from server".format(self.id))
+        logging.debug("Client {}: receive batchnum from server".format(self.id))
         self.comm.send(0, "ACK")
 
         accum_grad = None
@@ -49,11 +49,11 @@ class FedSel_client(Base_client):
 
              # Download the global model parameters
             global_model, weight_range = self.comm.recv(0)
-            # log("Client {}: get global weights from server".format(self.id))
+            # logging.debug("Client {}: get global weights from server".format(self.id))
             self.unserialize_model(global_model)
 
             # Training
-            # log("Client {}: training in batch {} with optimer={} ...".format(self.id, batch_idx, type(self.optimizer)))
+            # logging.debug("Client {}: training in batch {} with optimer={} ...".format(self.id, batch_idx, type(self.optimizer)))
             data, target = data.to(DEVICE), target.to(DEVICE)
             self.optimizer.zero_grad()
             output = self.model(data)
@@ -70,11 +70,11 @@ class FedSel_client(Base_client):
             else:
                 accum_grad += gradients
             selected_index = ExpM(accum_grad, param.EPS*self.privacy1_percent)
-            # log("Client {}: selected_index = {}, max absval = {}".format(self.id, selected_index, torch.max(accum_grad)))
+            # logging.debug("Client {}: selected_index = {}, max absval = {}".format(self.id, selected_index, torch.max(accum_grad)))
             selected_val = pm_perturbation(accum_grad[selected_index], param.CLIPSIZE, param.EPS-param.EPS*self.privacy1_percent)
             self.comm.send(0, (selected_index, selected_val))
             assert self.comm.recv(0) == "ACK"
-            # log("Client {}: send local grads to server".format(self.id))
+            # logging.debug("Client {}: send local grads to server".format(self.id))
 
     def evaluate(self):
         """

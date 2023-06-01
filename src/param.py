@@ -14,7 +14,7 @@ SEED = 114
 # DEVICE = torch.device("cpu")
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-LOG_PATH = "/home/zhangtl/PFL/log/"
+LOG_PATH = "./log/"
 LOG_NAME = strftime("%Y-%m-%d_%H-%M/", localtime())
 
 # System

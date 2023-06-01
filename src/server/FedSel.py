@@ -4,7 +4,8 @@ import queue
 import random
 
 from network import socket_comm, fake_comm
-from util import log, load_dataset, load_criterion
+from util import load_dataset
+from model import load_criterion
 import param
 from base_server import Base_server
 
@@ -39,7 +40,7 @@ class FedSel_server(Base_server):
         batch_numbers = []
         for idx in range(1, self.size):
             self.comm.send(idx, idx in chose)
-            log("Server: send invitation {} to Client {} ".format(idx in chose, idx))
+            logging.debug("Server: send invitation {} to Client {} ".format(idx in chose, idx))
             if idx in chose:
                 batch_numbers.append(self.comm.recv(src=idx))
             else:
@@ -48,11 +49,11 @@ class FedSel_server(Base_server):
         min_batch_number = min(batch_numbers)
         for idx in chose:
             self.comm.send(idx, min_batch_number)
-            log("Server: send min_batch_number to Client {} ".format(idx))
+            logging.debug("Server: send min_batch_number to Client {} ".format(idx))
             assert self.comm.recv(src=idx) == "ACK"
 
         for batch_idx in range(min_batch_number):
-            log("Server: batch {} begin".format(batch_idx))
+            logging.debug("Server: batch {} begin".format(batch_idx))
             global_model = self.serialize_model(type="raw")
             weight_range = []
             for weight in global_model:
@@ -75,7 +76,7 @@ class FedSel_server(Base_server):
                 tr.join()
 
             # for idx in chose:
-            #     log("Server: send global weights to Client {}".format(idx))
+            #     logging.debug("Server: send global weights to Client {}".format(idx))
 
             Thr = [threading.Thread(target=FedSel_server.collect_grads, args=(self, idx)) for idx in chose]
             for tr in Thr:
@@ -83,7 +84,7 @@ class FedSel_server(Base_server):
             for tr in Thr:
                 tr.join()
 
-            # log("Server: collect grads done")
+            # logging.debug("Server: collect grads done")
 
             res = torch.tensor([0.]*len(global_model)).to(param.DEVICE)
             for idx in chose:
@@ -94,7 +95,7 @@ class FedSel_server(Base_server):
             res = global_model-res*param.LEARNING_RATE
             self.unserialize_model(res)
 
-        log("Server: round {} end".format(rn))
+        logging.debug("Server: round {} end".format(rn))
 
     def evaluate(self):
         self.comm.initialize()
