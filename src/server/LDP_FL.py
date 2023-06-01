@@ -5,7 +5,8 @@ import random
 import logging
 
 from network import socket_comm, fake_comm
-from util import load_dataset, load_criterion
+from util import load_dataset
+from model import load_criterion
 import param
 from base_server import Base_server
 
