@@ -1,18 +1,5 @@
-from torch.utils.data import Dataset
 from torchvision import datasets, transforms
 from adultDataset import Adult_dataset
-
-class base_dataset(Dataset):
-    def __init__(self, x, y):
-        super().__init__()
-        self.x = x
-        self.y = y
-
-    def __len__(self):
-        return len(self.y)
-    
-    def __getitem__(self, index):
-        return self.x[index], self.y[index]
 
 def get_dataset(dataset: str):
     if dataset == "MNIST":

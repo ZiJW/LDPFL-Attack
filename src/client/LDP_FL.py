@@ -20,10 +20,6 @@ def data_pertubation(W, c: float, r: float, eps: float, type: str = "normal"):
         cmp = torch.gt(Pb, rnd).to(DEVICE)
         if type == "bad":
             cmp = ~cmp
-        # logging.debug("[{:.3f}, {:.3f}]:".format(c - r, c + r))
-        # logging.debug("Pb = {}".format(Pb[:10]))
-        # logging.debug("rnd = {}".format(rnd[:10]))
-        # logging.debug("cmp = {}".format(cmp[:10]))
 
         res = ((cmp) * (c + r * coff)) + ((~cmp) * (c - r * coff))
     return res

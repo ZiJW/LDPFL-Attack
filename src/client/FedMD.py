@@ -2,7 +2,7 @@ import torch
 
 from base_client import Base_client
 from util import load_dataset
-from model import load_model, load_criterion, load_optimizer
+from model import load_criterion
 from param import DEVICE
 import param
 
