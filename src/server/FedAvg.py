@@ -13,7 +13,7 @@ class FedAvg_server(Base_server):
 
         self.model_size = []
         sd = self.model.state_dict()
-        _, self.test_loader = load_dataset(param.DATASET, param.FOLDER, "fl", 0, False)
+        self.test_loader, = load_dataset(param.DATASET, param.FOLDER, [("test", False)])
         self.criterion = load_criterion(param.CRITERION)
         for x in sd:
             self.model_size.append(sd[x].numel())
@@ -22,7 +22,9 @@ class FedAvg_server(Base_server):
         batch_length = int(self.comm.recv(1, 1, torch.int32))
         for idx in range(2, self.size):
             assert self.comm.recv(idx, 1, torch.int32) == batch_length
- 
+    
+        print("length = {}".format(batch_length))
+        
         for bn in tqdm(range(batch_length), desc="Epoch {}".format(ep)):
             # Broadcase the current model param
             model_param = self.serialize_model()
