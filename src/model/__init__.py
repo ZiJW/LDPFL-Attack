@@ -39,6 +39,8 @@ def load_model(Model: str, Param: dict):
 def load_criterion(Criterion: str, Alpha : float = 0.0, Temp : float = 0.0):
     if Criterion == "CrossEntropy":
         return nn.CrossEntropyLoss()
+    elif Criterion == "BCELoss":
+        return nn.BCELoss()
     elif Criterion == "CrossEntropyLoss_with_distillation":
         return CrossEntropyLoss_with_distillation(nn.CrossEntropyLoss(), Alpha, Temp)
     else:

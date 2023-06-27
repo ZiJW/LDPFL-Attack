@@ -79,7 +79,7 @@ def data_pertubation(W, c: float, r: float, eps: float):
     
 def ExpM(V, eps):
     d = len(V)
-    pr = torch.exp(eps*V/(d-1))
+    pr = torch.exp(eps*torch.abs(V)/(d-1))
     pr = np.asarray(pr.div(torch.sum(pr)).cpu().numpy()).astype('float64')
     pr = pr/np.sum(pr)
     index = np.random.choice(range(d), p=pr)

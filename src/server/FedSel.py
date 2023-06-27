@@ -2,6 +2,7 @@ import torch
 import threading
 import queue
 import random
+import logging
 
 from network import socket_comm, fake_comm
 from util import load_dataset

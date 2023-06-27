@@ -20,13 +20,21 @@ class Adult_dataset(Dataset):
         file_path = "adult/raw/adult.%s"%("data" if self.train else "test")
         df = pd.read_csv(file_path)
         df.drop("fnlwgt", axis=1, inplace=True)
+        # for attr_name in df.columns:
+        #     vals = df[attr_name].unique()
+        #     print("df[%s].vals = %s" % (attr_name, vals))
         for attr_name in self.map_dict:
             df[attr_name] = df[attr_name].map(self.map_dict[attr_name])
-        print("train" if self.train else "test")
-        df.info()
+        # for attr_name in df.columns:
+        #     vals = df[attr_name].unique()
+        #     print("df[%s].vals = %s" % (attr_name, vals))
+        #     print("df[%s].max = %s" % (attr_name, df[attr_name].max()))
+        #     print("df[%s].min = %s" % (attr_name, df[attr_name].min()))
+        # print("train" if self.train else "test")
+        # df.info()
         X, Y = df.drop("income", axis=1), df["income"]
         # return X, Y
-        return torch.from_numpy(X.to_numpy(dtype=np.int32)), torch.tensor(Y.to_numpy(dtype=np.int32))
+        return torch.tensor(X.to_numpy(), dtype=torch.float), torch.tensor(Y.to_numpy())
 
     def __len__(self):
         return len(self.y)
@@ -72,6 +80,7 @@ class Adult_dataset(Dataset):
                 "Separated":3,
                 "Widowed":4,
                 "Married-spouse-absent":5,
+                'Married-AF-spouse':6,
             },
             "occupation":{
                 "Prof-specialty":0,
