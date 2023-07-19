@@ -90,6 +90,8 @@ class FedSel_server(Base_server):
             res = torch.tensor([0.]*len(global_model)).to(param.DEVICE)
             for idx in chose:
                 index, val = self.grads_buffer.get()
+                if index == -1:
+                    continue
                 res[index].data += val*param.CLIPSIZE
             
             res = res.div(param.BATCH_SIZE_TRAIN)

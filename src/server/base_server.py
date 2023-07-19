@@ -14,7 +14,8 @@ class Base_server(ABC):
         if not os.path.exists(self.log_path):
             os.mkdir(self.log_path)
             os.mkdir(self.log_path + "model")
-        logging.basicConfig(filename=self.log_path + "/log_server.txt", format="%(asctime)s [%(levelname)s]: %(message)s", filemode="w", level=logging.INFO)
+        logging.basicConfig(filename=self.log_path + "/log_server.txt", format="%(asctime)s [%(levelname)s]: %(message)s", filemode="w", 
+                            level=logging.INFO)
         os.system("cp param.py " + self.log_path)
 
         self.epoch = Epoch

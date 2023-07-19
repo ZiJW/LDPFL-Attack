@@ -85,6 +85,23 @@ def ExpM(V, eps):
     index = np.random.choice(range(d), p=pr)
     return index
 
+def PE(V: torch.Tensor, eps):
+    N = len(V)
+    k = int(N/10)
+    ind = torch.topk(V, k).indices
+    arr = torch.Tensor(np.zeros(N))
+    arr[ind] = 1
+    flip_pr = 1/(1+torch.exp(eps))
+    arr2 = torch.Tensor(np.random.binomial(1, flip_pr, N))
+    arr.logical_xor(arr2)
+    non_zeros = arr.nonzero()[0]
+    if len(non_zeros) == 0:
+        return None
+    else:
+        return np.random.choice(non_zeros)
+
+    
+
 def pm_perturbation(query_result, clip, epsilon):
     if query_result>clip:
         query_result = clip

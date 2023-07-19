@@ -9,12 +9,12 @@ from client.DP_SGD import DPSGD_client
 import torch.multiprocessing as mp
 def client_run(*args):
     set_random_seed(param.SEED)
-    A = DPSGD_client(*args)
+    A = FedSel_client(*args)
     A.evaluate()
 
 def server_run(*args):
     set_random_seed(param.SEED)
-    A = DPSGD_server(*args)
+    A = FedSel_server(*args)
     A.evaluate()
 
 if __name__ == "__main__":

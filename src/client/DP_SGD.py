@@ -30,53 +30,47 @@ class DPSGD_client(Base_client):
 
         chose = self.comm.recv(0)
         
-        logging.debug("Client {}: receive invitation {}".format(self.id, chose))
+        logging.debug("Client {} : receive invitation {}".format(self.id, chose))
         self.comm.send(0, "ACK")
 
-        batch_num = self.comm.recv(0)
-        logging.debug("Client {}: receive batchnum from server".format(self.id))
-        self.comm.send(0, "ACK")
+        # Download the global model parameters
+        global_model, weight_range = self.comm.recv(0)
+        logging.debug("Client {}: get global weights from server: {}".format(self.id, global_model))
+        self.unserialize_model(global_model)
 
-        for batch_idx, (data, target) in enumerate(self.train_loader):
-            if batch_idx >= batch_num:
-                break
-
-             # Download the global model parameters
-            global_model, weight_range = self.comm.recv(0)
-            logging.debug("Client {}: get global weights from server: {}".format(self.id, global_model))
-            self.unserialize_model(global_model)
-
+        torch.autograd.set_detect_anomaly(True)
+        gradients = torch.tensor([0.]*len(global_model)).to(param.DEVICE)
+        batch_size = 0
+        for data, target in self.train_loader:
             # Training
             # logging.debug("Client {}: training in batch {} with optimer={} ...".format(self.id, batch_idx, type(self.optimizer)))
-            torch.autograd.set_detect_anomaly(True)
             data, target = data.to(DEVICE), target.to(DEVICE)
             self.optimizer.zero_grad()
             output = self.model(data)
+            # logging.debug("output = {}".format(output))
+            # logging.debug("target = {}".format(target))
             loss = -self.criterion(output, target) if self.id in param.BAD_CLIENTS else self.criterion(output, target)
             loss.backward()
-            self.optimizer.step()
+            
+            gradient = []
+            for val in self.model.parameters():
+                gradient.append(val.grad.view(-1))
+            gradient = torch.cat(gradient)
+            norm = torch.sqrt(torch.sum(torch.pow(gradient, 2)))
+            if norm > param.NORM_BOUND:
+                gradient.div(norm.div(param.NORM_BOUND))
 
-            if self.id in param.BAD_CLIENTS:
-                gradients = []
-                for val in self.model.parameters():
-                    gradients.append(val.grad.view(-1))
-                gradients = torch.cat(gradients)
-                max_index = torch.argmax(torch.abs(gradients), dim=0)
-                grad_val = gradients[max_index].sign()*param.CLIPSIZE
-                logging.debug("Bad Client {}: send message ({}, {})".format(self.id, max_index, grad_val))
-                self.comm.send(0, (max_index, grad_val))
+            batch_size = batch_size + 1
+            gradients += gradient
 
-            else:
-                gradients = []
-                for val in self.model.parameters():
-                    gradients.append(val.view(-1))
-                gradients = torch.cat(gradients)
+        gradients.div(batch_size)
+        res = global_model-gradients*param.LEARNING_RATE
 
-                logging.debug("Client {}: gradient: {}".format(self.id, gradients))
-                # logging.debug("Client {}: selected_index = {}, max absval = {}".format(self.id, selected_index, torch.max(accum_grad)))
-                self.comm.send(0, gradients)
-            assert self.comm.recv(0) == "ACK"
-            # logging.debug("Client {}: send local grads to server".format(self.id))
+        logging.debug("Client {}: norm = {}, weights = {}".format(self.id, norm, res))
+        # logging.debug("Client {}: selected_index = {}, max absval = {}".format(self.id, selected_index, torch.max(accum_grad)))
+        self.comm.send(0, res)
+        assert self.comm.recv(0) == "ACK"
+        # logging.debug("Client {}: send local grads to server".format(self.id))
 
     def evaluate(self):
         """

@@ -2,7 +2,7 @@ import torch
 import logging
 from base_client import Base_client
 from model import load_model, load_criterion, load_optimizer
-from util import load_dataset, ExpM, pm_perturbation
+from util import load_dataset, ExpM, pm_perturbation, PE
 from param import DEVICE
 import param
 
@@ -90,10 +90,15 @@ class FedSel_client(Base_client):
                 else:
                     accum_grad += gradients
                 logging.debug("Client {}: accum_grad = {}".format(self.id, accum_grad))
-                selected_index = ExpM(accum_grad, param.EPS*self.privacy1_percent)
+                # selected_index = ExpM(accum_grad, param.EPS*self.privacy1_percent)
+                selected_index = PE(accum_grad, param.EPS*self.privacy1_percent)
                 # logging.debug("Client {}: selected_index = {}, max absval = {}".format(self.id, selected_index, torch.max(accum_grad)))
-                selected_val = pm_perturbation(accum_grad[selected_index], param.CLIPSIZE, param.EPS-param.EPS*self.privacy1_percent)
-                self.comm.send(0, (selected_index, selected_val))
+                if selected_index is None:
+                    logging.info("Client {}: selected None index".format(self.id))
+                    self.comm.send(0, (-1, 0))
+                else:
+                    selected_val = pm_perturbation(accum_grad[selected_index], param.CLIPSIZE, param.EPS-param.EPS*self.privacy1_percent)
+                    self.comm.send(0, (selected_index, selected_val))
             assert self.comm.recv(0) == "ACK"
             # logging.debug("Client {}: send local grads to server".format(self.id))
 
