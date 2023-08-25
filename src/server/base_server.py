@@ -23,6 +23,7 @@ class Base_server(ABC):
         self.id = 0
         self.comm = load_comm(comm, self.id, self.size)
         self.model = load_model(Model, Model_param)
+        self.temp_model = load_model(Model, Model_param)
 
     def serialize_model(self, type="concat") -> torch.Tensor:
         res = []
@@ -39,6 +40,13 @@ class Base_server(ABC):
     def unserialize_model(self, parameters: torch.Tensor):
         current_index = 0
         for val in self.model.state_dict().values():
+            sz = val.numel()
+            val.copy_(parameters[current_index: current_index + sz].view(val.shape))
+            current_index += sz
+
+    def unserialize_temp_model(self, parameters: torch.Tensor):
+        current_index = 0
+        for val in self.temp_model.state_dict().values():
             sz = val.numel()
             val.copy_(parameters[current_index: current_index + sz].view(val.shape))
             current_index += sz

@@ -4,6 +4,7 @@ import queue
 import random
 import logging
 
+from tqdm import tqdm
 from network import socket_comm, fake_comm
 from util import load_dataset
 from model import load_criterion
@@ -22,6 +23,7 @@ class DPSGD_server(Base_server):
         self.kap = param.KAP
 
         self.test_loader, = load_dataset(param.DATASET, param.FOLDER, [("test", False)])
+        self.valid_loader, = load_dataset(param.DATASET, param.FOLDER, [("public", False)])
         self.criterion = load_criterion(param.CRITERION)
 
         self.model_size = []
@@ -33,7 +35,7 @@ class DPSGD_server(Base_server):
 
     def collect_weights(self, idx: int):
         msg = self.comm.recv(idx)
-        self.weights_buffer.put(msg)
+        self.weights_buffer.put((idx, msg))
         self.comm.send(idx, "ACK")
 
     def train(self, rn):
@@ -78,14 +80,40 @@ class DPSGD_server(Base_server):
         # logging.debug("Server: collect grads done")
 
         res = torch.tensor([0.]*len(global_model)).to(param.DEVICE)
-        for idx in chose:
-            val = self.weights_buffer.get()
+        for _ in range(len(chose)):
+            idx, val = self.weights_buffer.get()
+            self.unserialize_temp_model(val)
+            acc, loss = self.test_on_public(self.temp_model)
+            logging.info('(Server) round {}: model from client {} Acc = {:.3f}, Loss: {:.9f}'.format(rn, idx, acc, loss))
             res += val
         
         res = res.div(num_choose)
         self.unserialize_model(res)
 
         logging.debug("Server: round {} end".format(rn))
+
+    def test_on_public(self, model):
+        """
+            Test the accuracy and loss on validation dataset.
+        """
+        Acc, Loss = 0, 0.0
+        LossList = []
+        N = 0
+        for data, target in self.valid_loader:
+            with torch.no_grad():
+                data, target = data.to(param.DEVICE), target.to(param.DEVICE)
+                output = model(data)
+                loss = self.criterion(output, target)
+                _, pred = torch.max(output, dim=1)
+                
+                Loss += loss.item()
+                LossList.append(loss.item())
+                Acc += torch.sum(pred.eq(target)).item()
+                N += len(target)
+
+        Acc = Acc / N
+        Loss = Loss / len(self.valid_loader)
+        return Acc, Loss
 
     def evaluate(self):
         self.comm.initialize()

@@ -1,5 +1,6 @@
 import torch
 import logging
+import numpy as np
 from base_client import Base_client
 from model import load_model, load_criterion, load_optimizer
 from util import load_dataset, ExpM, pm_perturbation, PE
@@ -71,7 +72,9 @@ class FedSel_client(Base_client):
                     gradients.append(val.grad.view(-1))
                 gradients = torch.cat(gradients)
                 max_index = torch.argmax(torch.abs(gradients), dim=0)
-                grad_val = gradients[max_index].sign()*param.CLIPSIZE
+                eps = param.EPS*(1-self.privacy1_percent)
+                pm_max = (np.exp(eps/2) + 1) / (np.exp(eps/2) - 1)
+                grad_val = gradients[max_index].sign()*pm_max
                 logging.debug("Bad Client {}: send message ({}, {})".format(self.id, max_index, grad_val))
                 self.comm.send(0, (max_index, grad_val))
             else:
@@ -84,12 +87,12 @@ class FedSel_client(Base_client):
                     gradients.append(val.grad.view(-1))
                 gradients = torch.cat(gradients)
 
-                logging.debug("Client {}: gradient: {}".format(self.id, gradients))
+                # logging.debug("Client {}: gradient: {}".format(self.id, gradients))
                 if accum_grad is None:
                     accum_grad = gradients
                 else:
                     accum_grad += gradients
-                logging.debug("Client {}: accum_grad = {}".format(self.id, accum_grad))
+                # logging.debug("Client {}: accum_grad = {}".format(self.id, accum_grad))
                 # selected_index = ExpM(accum_grad, param.EPS*self.privacy1_percent)
                 selected_index = PE(accum_grad, param.EPS*self.privacy1_percent)
                 # logging.debug("Client {}: selected_index = {}, max absval = {}".format(self.id, selected_index, torch.max(accum_grad)))
@@ -98,7 +101,9 @@ class FedSel_client(Base_client):
                     self.comm.send(0, (-1, 0))
                 else:
                     selected_val = pm_perturbation(accum_grad[selected_index], param.CLIPSIZE, param.EPS-param.EPS*self.privacy1_percent)
+                    logging.debug("Client {}: send message ({}, {})".format(self.id, selected_index, selected_val))
                     self.comm.send(0, (selected_index, selected_val))
+                    accum_grad[selected_index] = 0
             assert self.comm.recv(0) == "ACK"
             # logging.debug("Client {}: send local grads to server".format(self.id))
 

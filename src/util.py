@@ -5,6 +5,7 @@ from torch.utils.data import DataLoader
 from torch.utils.data import Dataset
 import random
 import os
+import math
 
 import param
 from param import DEVICE
@@ -91,7 +92,7 @@ def PE(V: torch.Tensor, eps):
     ind = torch.topk(V, k).indices
     arr = torch.Tensor(np.zeros(N))
     arr[ind] = 1
-    flip_pr = 1/(1+torch.exp(eps))
+    flip_pr = 1/(1+math.exp(eps))
     arr2 = torch.Tensor(np.random.binomial(1, flip_pr, N))
     arr.logical_xor(arr2)
     non_zeros = arr.nonzero()[0]

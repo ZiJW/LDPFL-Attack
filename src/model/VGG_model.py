@@ -38,11 +38,11 @@ class VGG_Mini(nn.Module):
         return x
 
 class VGG16(nn.Module):
-    def __init__(self, num_classes=10):
+    def __init__(self, num_classes=10, channel=3):
         super(VGG16, self).__init__()
         # 第一段卷积层
         self.conv1 = nn.Sequential(
-            nn.Conv2d(in_channels=3, out_channels=64, kernel_size=3, stride=1, padding=1),
+            nn.Conv2d(in_channels=channel, out_channels=64, kernel_size=3, stride=1, padding=1),
             nn.ReLU(inplace=True),
             nn.Conv2d(in_channels=64, out_channels=64, kernel_size=3, stride=1, padding=1),
             nn.ReLU(inplace=True),

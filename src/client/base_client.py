@@ -42,9 +42,11 @@ class Base_client(ABC):
             raise ValueError("Invalid serialize type: {}".format(type))
         return res
 
-    def unserialize_model(self, parameters: torch.Tensor):
+    def unserialize_model(self, parameters: torch.Tensor, model=None):
         current_index = 0
-        for val in self.model.state_dict().values():
+        if model is None:
+            model = self.model
+        for val in model.state_dict().values():
             sz = val.numel()
             val.copy_(parameters[current_index: current_index + sz].view(val.shape))
             current_index += sz

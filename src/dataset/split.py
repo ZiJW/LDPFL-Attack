@@ -137,8 +137,18 @@ def split_train_test_iid(NAME: str, N_clients: int, folder_name: str):
     with open("./{}/{}/test.pkl".format(NAME, folder_name), "wb") as F:
         pickle.dump(test_dataset, F)
 
+def split_public_train_test_iid(NAME: str, N_clients: int, folder_name: str):
+    train_dataset, test_dataset = get_dataset(NAME)
+    length = len(train_dataset)
+    public_dataset, train_dataset = random_split(train_dataset, [int(0.1 * length), int(0.9 * length)])
+    split_iid(NAME, train_dataset, N_clients, folder_name=folder_name)
+    with open("./{}/{}/test.pkl".format(NAME, folder_name), "wb") as F:
+        pickle.dump(test_dataset, F)
+    with open("./{}/{}/public.pkl".format(NAME, folder_name), "wb") as F:
+        pickle.dump(public_dataset, F)
+
 if __name__ == "__main__":
     # split_train_test_non_iid("MNIST", "non_iid_5_p=0.9")
-    # split_public_train_test("MNIST", "non_iid_5")
-    split_train_test_iid("MNIST", 10, "iid_10")
+    split_public_train_test_iid("MNIST", 20, "iid_20_with_public")
+    # split_train_test_iid("MNIST", 20, "iid_20")
 
