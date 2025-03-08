@@ -4,9 +4,15 @@ import logging
 from tqdm import tqdm
 import param
 import os
+import numpy as np
+import matplotlib.pyplot as plt
+from sklearn.decomposition import PCA
+from sklearn.manifold import TSNE
 
 from network import load_comm
 from model import load_model
+from sklearn.manifold import MDS
+
 
 class Base_server(ABC):
     def __init__(self, size, Model, Model_param, Epoch, comm="dist"):
@@ -14,6 +20,9 @@ class Base_server(ABC):
         if not os.path.exists(self.log_path):
             os.mkdir(self.log_path)
             os.mkdir(self.log_path + "model")
+            os.mkdir(self.log_path + "fig")
+        if logging.getLogger().hasHandlers():
+            logging.getLogger().handlers.clear()
         logging.basicConfig(filename=self.log_path + "/log_server.txt", format="%(asctime)s [%(levelname)s]: %(message)s", filemode="w", 
                             level=logging.INFO)
         os.system("cp param.py " + self.log_path)
@@ -75,6 +84,74 @@ class Base_server(ABC):
         Loss = Loss / len(self.test_loader)
         logging.info('(Server) Epoch: {} Acc = {:.3f}, Loss: {:.9f}'.format(ep, Acc, Loss))
         # print('(Server) Epoch: {} Acc = {:.3f}, Loss: {:.9f}'.format(ep, Acc, Loss))
+
+    def select_multikrum(self, res_matrix, f, k):
+        #通过multi-krum，从所有client模型参数中挑选k个参与聚合，
+        res_matrix_tensor = torch.stack(res_matrix, dim=0)
+        # 计算距离矩阵
+        n = res_matrix_tensor.shape[0]
+        dist_matrix = torch.zeros((n, n), device=param.DEVICE)
+        # 使用广播和矩阵运算计算距离
+        for i in range(n):
+            dist_matrix[i] = torch.norm(res_matrix_tensor - res_matrix_tensor[i], dim=1)
+        sorted_matrix, sorted_indices = torch.sort(dist_matrix, dim=1, descending=False)
+
+        #MKrum对每个client的分数是自己和最近的n - f - 1个参数的距离之和
+        MKrum_score = torch.sum(sorted_matrix[:, :n - f - 1 + 1], dim = 1)
+        #因为和自己的距离是0，所以在n - f - 1上要加1
+        sorted_score, indices = torch.sort(MKrum_score, dim=0, descending=False)
+        selected_indices = indices[:k]
+        return selected_indices
+
+    def visualize_parameter(self, param_matrix, cap_name, save_path, mode="PCA", red_list=[], blue_list=[]):
+        param_matrix_ = torch.stack(param_matrix).cpu().numpy()
+        n = param_matrix_.shape[0]  # 获取模型数量
+
+        # 生成颜色数组，默认所有点是灰色
+        colors = np.array(['grey'] * n, dtype=object)  
+        colors[blue_list] = 'blue'
+        colors[red_list] = 'red' 
+        intersection = list(set(red_list).intersection(set(blue_list)))
+        colors[intersection] = 'purple'
+        colors = colors.tolist()
+
+        if mode == "PCA":
+            pca = PCA(n_components=2)
+            pca_result = pca.fit_transform(param_matrix_)
+            plt.figure(figsize=(8,6))
+            plt.scatter(pca_result[:, 0], pca_result[:, 1], alpha=0.7, c=colors, edgecolors='k')
+            plt.xlabel("PCA Component 1")
+            plt.ylabel("PCA Component 2")
+            plt.title(cap_name)
+            plt.savefig(save_path)
+            plt.show()
+
+        elif mode == "t-SNE":
+            pca_50 = PCA(n_components=15)
+            param_pca50 = pca_50.fit_transform(param_matrix_)
+            tsne = TSNE(n_components=2, perplexity=15, random_state=42)
+            tsne_result = tsne.fit_transform(param_pca50)
+            plt.figure(figsize=(8,6))
+            plt.scatter(tsne_result[:, 0], tsne_result[:, 1], alpha=0.7, c=colors, edgecolors='k')
+            plt.xlabel("t-SNE Component 1")
+            plt.ylabel("t-SNE Component 2")
+            plt.title(cap_name)
+            plt.savefig(save_path)
+            plt.show()
+        elif mode == "MDS" :
+            mds = MDS(n_components=2, dissimilarity="euclidean", random_state=42)
+            mds_result = mds.fit_transform(param_matrix_)
+            plt.figure(figsize=(8,6))
+            plt.scatter(mds_result[:, 0], mds_result[:, 1], alpha=0.7, c=colors, edgecolors='k')
+            plt.xlabel("MDS Component 1")
+            plt.ylabel("MDS Component 2")
+            plt.title(cap_name)
+            plt.savefig(save_path)
+            plt.show()
+        else:
+            raise NotImplementedError
+
+
 
     @abstractmethod
     def evaluate(self):

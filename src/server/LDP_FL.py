@@ -78,30 +78,103 @@ class LDPFL_server(Base_server):
         for idx in chose:
             logging.debug("Server: send global weights to Client {}".format(idx))
 
-        Thr = [threading.Thread(target=LDPFL_server.collect_weights, args=(self, idx)) for idx in chose]
-        for tr in Thr:
-            tr.start()
-        for tr in Thr:
-            tr.join()
+        if param.TAPPING_CLIENTS == []:
+            Thr = [threading.Thread(target=LDPFL_server.collect_weights, args=(self, idx)) for idx in chose]
+            for tr in Thr:
+                tr.start()
+            for tr in Thr:
+                tr.join()
 
+            record_param = [[] for i in range(self.size - 1)]
+            for ln in range(len(self.model_size)):
+                for _ in chose:
+                    idx, wt = self.weights_buffer[ln].get()
+                    record_param[idx - 1].append(wt)
+        else :
+            Thr = [threading.Thread(target=LDPFL_server.collect_weights, args=(self, idx)) for idx in chose if idx not in param.TAPPING_CLIENTS]
+            good_client_num = len(Thr)
+            for tr in Thr:
+                tr.start()
+            for tr in Thr:
+                tr.join()
+            record_param = [[] for i in range(self.size - 1)]
+            for ln in range(len(self.model_size)):
+                for _ in range(good_client_num):
+                    idx, wt = self.weights_buffer[ln].get()
+                    record_param[idx - 1].append(wt)
+            temp_idx2param = {}
+            for idx in range(self.size - 1):
+                if record_param[idx] != []:
+                    temp_idx2param[idx] = torch.cat(record_param[idx])
+            
+            if param.COMM == "socket":
+                Thr = [threading.Thread(target=socket_comm.send, args=(self.comm, idx, temp_idx2param)) for idx in chose if idx in param.TAPPING_CLIENTS]
+            elif param.COMM == "fake_socket":
+                Thr = [threading.Thread(target=fake_comm.send, args=(self.comm, idx, temp_idx2param)) for idx in chose if idx in param.TAPPING_CLIENTS]
+            else: 
+                raise ValueError("Invalid communication type: {}".format(param.COMM))
+
+            for tr in Thr:
+                tr.start()
+            for tr in Thr:
+                tr.join()
+            logging.debug("Send other clients' parameter to tapping client")
+
+            Thr = [threading.Thread(target=LDPFL_server.collect_weights, args=(self, idx)) for idx in chose if idx in param.TAPPING_CLIENTS]
+            bad_client_num = len(Thr)
+            for tr in Thr:
+                tr.start()
+            for tr in Thr:
+                tr.join()
+            
+            for ln in range(len(self.model_size)):
+                for _ in range(bad_client_num):
+                    idx, wt = self.weights_buffer[ln].get()
+                    record_param[idx - 1].append(wt)
+
+        merged_param = [ torch.cat(record_param[idx]) for idx in range(len(record_param)) ]
+        logging.debug("Server merged_param shape : {}".format(merged_param[0].shape))
+        if param.MKRUM :
+            selected_indices = self.select_multikrum(merged_param, param.MAX_FAILURE, param.KRUM_SELECTED)
+        else :
+            selected_indices = torch.tensor(range(0, self.size - 1))
+        logging.info("Server select aggregating clients : {}".format(selected_indices + 1))
+        bad_list_idx = torch.tensor(param.BAD_CLIENTS) - 1
+        self.visualize_parameter(merged_param, "round {}".format(rn), "{}fig/round{}.png".format(self.log_path, rn), 
+                                 mode = "MDS", red_list=bad_list_idx.tolist(), blue_list=selected_indices.tolist())
+        
         res = []
         for ln in range(len(self.model_size)):
             weight = []
             if param.CLIENTS_WEIGHTS == None:
-                for _ in chose:
-                    idx, wt = self.weights_buffer[ln].get()
-                    weight.append(wt)
+                for idx in selected_indices:
+                    weight.append(record_param[idx][ln])
                 weight = torch.stack(weight)
                 weight = torch.mean(weight, dim=0)
             else:
-                for _ in chose:
-                    idx, wt = self.weights_buffer[ln].get()
-                    weight.append(wt * (param.CLIENTS_WEIGHTS[idx] / sum(param.CLIENTS_WEIGHTS)))
+                sum_client_weights = 0.0
+                for idx in selected_indices:
+                    weight.append(record_param[idx][ln] * (param.CLIENTS_WEIGHTS[idx + 1]))
+                    sum_client_weights += param.CLIENTS_WEIGHTS[idx + 1]
                 weight = torch.stack(weight)
                 weight = torch.sum(weight, dim=0)
+                weight = weight / sum_client_weights
             res.append(weight)
-        
         res = torch.cat(res)
+        logging.debug("Server paramter shape : {}".format(res.shape))
+
+        """res = torch.tensor([0.]*len(merged_param[0]), dtype=torch.float32).to(param.DEVICE)
+        if param.CLIENTS_WEIGHTS == None: 
+            for idx in selected_indices :
+                res += merged_param[idx]
+            res.div(selected_indices.shape[0])
+        else:
+            cnt_weights = 0.0
+            for idx in selected_indices :
+                res += merged_param[idx] * param.CLIENTS_WEIGHTS[idx + 1]
+                cnt_weights += param.CLIENTS_WEIGHTS[idx + 1]
+            res.div(cnt_weights)"""
+            
         self.unserialize_model(res)
 
     def evaluate(self):
@@ -109,4 +182,4 @@ class LDPFL_server(Base_server):
         for rn in range(self.round):
             self.train(rn)
             self.test(rn)
-            torch.save(self.model, self.log_path + "model/model_{}".format(rn))
+            #torch.save(self.model, self.log_path + "model/model_{}".format(rn))

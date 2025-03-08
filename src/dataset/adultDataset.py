@@ -3,6 +3,7 @@ import numpy as np
 from torch.utils.data import Dataset
 from torchvision import datasets, transforms
 import pandas as pd
+from sklearn.datasets import fetch_openml
 
 class Adult_dataset(Dataset):
     def __init__(
@@ -18,7 +19,13 @@ class Adult_dataset(Dataset):
 
     def load_data(self):
         file_path = "adult/raw/adult.%s"%("data" if self.train else "test")
-        df = pd.read_csv(file_path)
+        columns = [
+            "age", "workclass", "fnlwgt", "education", "education-num",
+            "marital.status", "occupation", "relationship", "race", "sex",
+            "capital-gain", "capital-loss", "hours-per-week", "native.country", "income"
+        ]
+        df = pd.read_csv(file_path, header=None, names=columns, skipinitialspace=True)
+        df = df.applymap(lambda x: x.rstrip(".") if isinstance(x, str) else x) #handle '.' at the end of each line
         df.drop("fnlwgt", axis=1, inplace=True)
         # for attr_name in df.columns:
         #     vals = df[attr_name].unique()

@@ -7,6 +7,7 @@ from network import load_comm
 from model import load_model, load_criterion, load_optimizer
 from param import DEVICE
 import param
+import math
 
 class Base_client(ABC):
     """
@@ -16,6 +17,8 @@ class Base_client(ABC):
         time.sleep(id)
         
         self.log_path = param.LOG_PATH + param.LOG_NAME
+        if logging.getLogger().hasHandlers():
+            logging.getLogger().handlers.clear()
         logging.basicConfig(filename=self.log_path + "/log_client{}.txt".format(id), format="%(asctime)s [%(levelname)s]: %(message)s", filemode="w", level=logging.DEBUG)
     
         self.id = id
@@ -79,6 +82,15 @@ class Base_client(ABC):
         Loss = Loss / len(self.test_loader)
         print('(Client {}) Epoch: {} Acc = {:.3f}, Loss: {:.9f}'.format(self.id, ep, Acc, Loss))
 
+    def GaussianNoise(self, epsilon, C, delta, shape):
+        std = math.sqrt(2 * math.log(1.25/delta)) * C / epsilon
+        gaussianNoise = torch.normal(0, std, shape, device=DEVICE)
+        return gaussianNoise
+    
+    def GaussianNoise(self, sigma, sensitivity, shape):
+        gaussianNoise = torch.normal(0, sigma * sensitivity, shape, device=param.DEVICE)
+        return gaussianNoise
+    
     @abstractmethod
     def evaluate():
         pass

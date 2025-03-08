@@ -31,6 +31,7 @@ class DPSGD_client(Base_client):
         self.round = param.N_ROUND
         self.privacy1_percent = 0.1
         self.layer0 = Transf(param.MODEL_PARAM["input_size"]).to(param.DEVICE)
+        self.ldp = param.LDP and self.id not in param.BAD_CLIENTS
 
         if self.id in param.BAD_CLIENTS:
             logging.info("Client {} is an adversary!".format(self.id))
@@ -98,6 +99,7 @@ class DPSGD_client(Base_client):
     def fit_on(self, loader, model_size, rev = False, transform=False):
         gradients = torch.tensor([0.]*model_size).to(param.DEVICE)
         layer0_grads = torch.tensor([0.]*(2*param.MODEL_PARAM["input_size"])).to(param.DEVICE)
+        cnt_samples = 0
         for data, target in loader:
             # Training
             # logging.debug("Client {}: training in batch {} with optimer={} ...".format(self.id, batch_idx, type(self.optimizer)))
@@ -116,8 +118,12 @@ class DPSGD_client(Base_client):
             norm = torch.sqrt(torch.sum(torch.pow(gradient, 2)))
             if norm > param.NORM_BOUND:
                 gradient.div_(norm.div(param.NORM_BOUND))
+            #noise = self.GaussianNoise(param.SIGMA, param.NORM_BOUND, gradients.shape)
+            #logging.debug("Client {} norm : {} parameter : {} with noise : {}".format(self.id, norm, gradients, noise))
+            #gradient += noise
             gradient.div_(len(data))
             gradients += gradient
+            cnt_samples += len(data)
         
             if transform is True:
                 gradient = []
@@ -129,6 +135,10 @@ class DPSGD_client(Base_client):
                     gradient.div_(norm.div(param.NORM_BOUND))
                 gradient.div_(len(data))
                 layer0_grads += gradient
+        if self.ldp:
+            noise = self.GaussianNoise(param.SIGMA, param.NORM_BOUND, gradients.shape) / cnt_samples
+            logging.debug("Client {} norm : {} parameter : {} with noise : {}".format(self.id, norm, gradients, noise))
+            gradients += noise
 
         return layer0_grads, gradients
 

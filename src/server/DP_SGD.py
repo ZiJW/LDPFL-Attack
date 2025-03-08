@@ -79,15 +79,24 @@ class DPSGD_server(Base_server):
 
         # logging.debug("Server: collect grads done")
 
-        res = torch.tensor([0.]*len(global_model)).to(param.DEVICE)
+        record_param = []
         for _ in range(len(chose)):
             idx, val = self.weights_buffer.get()
             self.unserialize_temp_model(val)
             acc, loss = self.test_on_public(self.temp_model)
             logging.info('(Server) round {}: model from client {} Acc = {:.3f}, Loss: {:.9f}'.format(rn, idx, acc, loss))
-            res += val
+            record_param.append((idx, val))
+        param_matrix = [val for idx, val in  sorted(record_param, key=lambda x : x[0])]
+        if param.MKRUM :
+            selected_indices = self.select_multikrum(param_matrix, param.MAX_FAILURE, param.KRUM_SELECTED)
+        else :
+            selected_indices = torch.tensor(range(0, self.size - 1))
+        logging.info("Server select aggregating clients : {}".format(selected_indices + 1))
         
-        res = res.div(num_choose)
+        res = torch.tensor([0.]*len(global_model)).to(param.DEVICE)
+        for idx in selected_indices:
+            res += param_matrix[idx]
+        res = res.div(selected_indices.shape[0])
         self.unserialize_model(res)
 
         logging.debug("Server: round {} end".format(rn))
