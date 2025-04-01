@@ -48,18 +48,12 @@ class DPSGD_server(Base_server):
 
         global_model = self.serialize_model(type="raw")
 
-        weight_range = []
-        for weight in global_model:
-            mini, maxi = torch.min(weight), torch.max(weight)
-            weight_range.append({"center": (float)((mini + maxi) / 2), "range": (float)((maxi - mini) / 2)})
         global_model = torch.cat(global_model)
 
         if param.COMM == "socket":
-            Thr = [threading.Thread(target=socket_comm.send, args=(self.comm, idx, (global_model, weight_range))) for
-                idx in chose]
+            Thr = [threading.Thread(target=socket_comm.send, args=(self.comm, idx, global_model)) for idx in chose]
         elif param.COMM == "fake_socket":
-            Thr = [threading.Thread(target=fake_comm.send, args=(self.comm, idx, (global_model, weight_range))) for idx
-                in chose]
+            Thr = [threading.Thread(target=fake_comm.send, args=(self.comm, idx, global_model)) for idx in chose]
         else:
             raise ValueError("Invalid communication type: {}".format(param.COMM))
 
@@ -70,34 +64,82 @@ class DPSGD_server(Base_server):
 
         # for idx in chose:
         #     logging.debug("Server: send global weights to Client {}".format(idx))
+        if param.TAPPING_CLIENTS == [] :
+            Thr = [threading.Thread(target=DPSGD_server.collect_weights, args=(self, idx)) for idx in chose]
+            for tr in Thr:
+                tr.start()
+            for tr in Thr:
+                tr.join()
 
-        Thr = [threading.Thread(target=DPSGD_server.collect_weights, args=(self, idx)) for idx in chose]
-        for tr in Thr:
-            tr.start()
-        for tr in Thr:
-            tr.join()
+            # logging.debug("Server: collect grads done")
 
-        # logging.debug("Server: collect grads done")
+            record_param = []
+            for _ in range(len(chose)):
+                idx, val = self.weights_buffer.get()
+                self.unserialize_temp_model(global_model - param.LEARNING_RATE * val)
+                acc, loss = self.test_on_public(self.temp_model)
+                logging.info('(Server) round {}: model from client {} Acc = {:.3f}, Loss: {:.9f}'.format(rn, idx, acc, loss))
+                record_param.append((idx, val))
+        else :
+            Thr = [threading.Thread(target=DPSGD_server.collect_weights, args=(self, idx)) for idx in chose if idx not in param.TAPPING_CLIENTS]
+            good_client_num = len(Thr)
+            for tr in Thr:
+                tr.start()
+            for tr in Thr:
+                tr.join()
+            record_param = []
+            for _ in range(good_client_num):
+                idx, val = self.weights_buffer.get()
+                self.unserialize_temp_model(global_model - param.LEARNING_RATE * val)
+                acc, loss = self.test_on_public(self.temp_model)
+                logging.info('(Server) round {}: model from client {} Acc = {:.3f}, Loss: {:.9f}'.format(rn, idx, acc, loss))
+                record_param.append((idx, val))
+            
+            if param.COMM == "socket":
+                Thr = [threading.Thread(target=socket_comm.send, args=(self.comm, idx, record_param)) for idx in chose if idx in param.TAPPING_CLIENTS]
+            elif param.COMM == "fake_socket":
+                Thr = [threading.Thread(target=fake_comm.send, args=(self.comm, idx, record_param)) for idx in chose if idx in param.TAPPING_CLIENTS]
+            else: 
+                raise ValueError("Invalid communication type: {}".format(param.COMM))
+            for tr in Thr:
+                tr.start()
+            for tr in Thr:
+                tr.join()
+            logging.debug("Send other clients' parameter to tapping client")
 
-        record_param = []
-        for _ in range(len(chose)):
-            idx, val = self.weights_buffer.get()
-            self.unserialize_temp_model(val)
-            acc, loss = self.test_on_public(self.temp_model)
-            logging.info('(Server) round {}: model from client {} Acc = {:.3f}, Loss: {:.9f}'.format(rn, idx, acc, loss))
-            record_param.append((idx, val))
+            Thr = [threading.Thread(target=DPSGD_server.collect_weights, args=(self, idx)) for idx in chose if idx in param.TAPPING_CLIENTS]
+            tapping_client_num = len(Thr)
+            for tr in Thr:
+                tr.start()
+            for tr in Thr:
+                tr.join()
+            for _ in range(tapping_client_num) :
+                idx, val = self.weights_buffer.get()
+                self.unserialize_temp_model(global_model - param.LEARNING_RATE * val)
+                acc, loss = self.test_on_public(self.temp_model)
+                logging.info('(Server) round {}: model from client {} Acc = {:.3f}, Loss: {:.9f}'.format(rn, idx, acc, loss))
+                record_param.append((idx, val))
+            logging.debug("Collect all clients' parameter")
+
         param_matrix = [val for idx, val in  sorted(record_param, key=lambda x : x[0])]
+        if param.TAPPING_SAME :
+            for i in param.TAPPING_CLIENTS :
+                param_matrix[i - 1] = param_matrix[param.TAPPING_CLIENTS[0] - 1] # if every tapping client update same parameter, used to reduce krum score
         if param.MKRUM :
             selected_indices = self.select_multikrum(param_matrix, param.MAX_FAILURE, param.KRUM_SELECTED)
         else :
             selected_indices = torch.tensor(range(0, self.size - 1))
         logging.info("Server select aggregating clients : {}".format(selected_indices + 1))
+        bad_list_idx = torch.tensor(param.BAD_CLIENTS) - 1
+        self.visualize_parameter(param_matrix, "round {}".format(rn), "{}fig/round{}.png".format(self.log_path, rn), 
+                                 mode = "MDS", red_list=bad_list_idx.tolist(), blue_list=selected_indices.tolist())
         
+
         res = torch.tensor([0.]*len(global_model)).to(param.DEVICE)
         for idx in selected_indices:
             res += param_matrix[idx]
         res = res.div(selected_indices.shape[0])
-        self.unserialize_model(res)
+        self.unserialize_model(global_model - param.LEARNING_RATE * res)
 
         logging.debug("Server: round {} end".format(rn))
 
@@ -126,6 +168,11 @@ class DPSGD_server(Base_server):
 
     def evaluate(self):
         self.comm.initialize()
+        Acc, Loss = [], []
         for rn in range(self.round):
             self.train(rn)
-            self.test(rn)
+            acc, loss = self.test(rn)
+            Acc.append(acc)
+            Loss.append(loss)
+        self.draw(Acc, "Acc", "Accurancy")
+        self.draw(Loss, "Loss", "Loss")

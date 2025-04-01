@@ -12,7 +12,7 @@ sys.path.append("./test")
 # System
 SEED = 114
 # DEVICE = torch.device("cpu")
-DEVICE = torch.device("cuda:1")
+DEVICE = torch.device("cuda:0")
 # DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 LOG_PATH = "/home/wzj/FLattack/FedField/log/"
@@ -32,48 +32,53 @@ DIST_BACKEND = "gloo"
 # DATASET = "adult"
 # FOLDER = "iid_30"
 DATASET = "MNIST"
-FOLDER = "iid_10_with_public"
+#FOLDER = "dirichlet_20users_a1000000.0_seed98_public0.05"
+FOLDER = "iid_20"
 
-MODEL = "MLP"
+MODEL = "VGG_Mini"
 MODEL_PARAM = {"input_size":784, "output_size": 10, "channel": 1}
 
-# MODEL = "LR"
+# MODEL = "MLP"
 # MODEL_PARAM = {"input_size":13, "output_size": 2, "channel": 1}
 
-N_NODES = 11
+N_NODES = 21
 N_EPOCH = 1
 
 CRITERION = "CrossEntropy"
 OPTIMIZER = "SGD"
 BATCH_SIZE_TRAIN = 64
 BATCH_SIZE_TEST = 1000
-LEARNING_RATE = 0.03
+LEARNING_RATE = 0.003
 
 # FL Settings
-FL_RULE = "DPSGD"
-N_ROUND = 60
-KAP = [10] * N_ROUND
-LATENCY_T = 10
-CLIENTS_WEIGHTS = [0] + [2] + [2] * (N_NODES - 2)
+FL_RULE = "Test"
+N_ROUND = 20
+KAP = [N_NODES - 1] * N_ROUND
 
 # LDP Settings
 LDP = True
-EPS = 4
-NORM_BOUND = 5.0
-SIGMA = 0.005
-
-# Attack Settings
-BAD_CLIENTS = []
+EPS = 0.72
+LATENCY_T = 10
+CLIENTS_WEIGHTS = [0] + [2] + [2] * (N_NODES - 2)
 
 # FedSel
 CLIPSIZE = 2.0
 
 # DPSGD
 USE_TRANSFORM = False
-ADVERSARY_ITERATION = 20
+NORM_BOUND = 5.0
+SIGMA = 90.0
 
 # Multi-Krum
-MKRUM = False  #whether use multi-krum to detect broken or bad client or not
+MKRUM = True
 BROKEN_CLIENTS = []  #broken clients, used for test whether krum work or not
-MAX_FAILURE = 1
-KRUM_SELECTED = 3
+MAX_FAILURE = 8
+KRUM_SELECTED = 10
+
+# Attack Settings
+BAD_CLIENTS = [1, 2, 3, 4, 5]
+TAPPING_CLIENTS = BAD_CLIENTS
+TAPPING_SAME = True
+#TAPPING_CLIENTS = []
+ADVERSARY_ITERATION = 10
+ADVERSARY_SCALE = 1.0

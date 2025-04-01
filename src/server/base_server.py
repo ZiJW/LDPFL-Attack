@@ -5,6 +5,9 @@ from tqdm import tqdm
 import param
 import os
 import numpy as np
+import pickle
+import pandas as pd
+
 import matplotlib.pyplot as plt
 from sklearn.decomposition import PCA
 from sklearn.manifold import TSNE
@@ -12,20 +15,24 @@ from sklearn.manifold import TSNE
 from network import load_comm
 from model import load_model
 from sklearn.manifold import MDS
+from scipy.spatial.distance import pdist, squareform
 
 
 class Base_server(ABC):
     def __init__(self, size, Model, Model_param, Epoch, comm="dist"):
         self.log_path = param.LOG_PATH + param.LOG_NAME
-        if not os.path.exists(self.log_path):
-            os.mkdir(self.log_path)
-            os.mkdir(self.log_path + "model")
-            os.mkdir(self.log_path + "fig")
+        os.makedirs(self.log_path, exist_ok=True)
+        os.mkdir(self.log_path + "model")
+        os.mkdir(self.log_path + "fig")
+        os.mkdir(self.log_path + "res")
         if logging.getLogger().hasHandlers():
             logging.getLogger().handlers.clear()
         logging.basicConfig(filename=self.log_path + "/log_server.txt", format="%(asctime)s [%(levelname)s]: %(message)s", filemode="w", 
                             level=logging.INFO)
-        os.system("cp param.py " + self.log_path)
+        os.system("cp param.py " + self.log_path + 
+                  "param_{}client_{}rule_{}model_{}rnd_{}bcsize_{}lr_{}attacker_krum{}.py".format(param.N_NODES - 1, param.FL_RULE, 
+                                                                                                  param.MODEL, param.N_ROUND, param.BATCH_SIZE_TRAIN,
+                                                                                                  param.LEARNING_RATE, len(param.BAD_CLIENTS), param.MKRUM))
 
         self.epoch = Epoch
         self.size = size
@@ -84,6 +91,24 @@ class Base_server(ABC):
         Loss = Loss / len(self.test_loader)
         logging.info('(Server) Epoch: {} Acc = {:.3f}, Loss: {:.9f}'.format(ep, Acc, Loss))
         # print('(Server) Epoch: {} Acc = {:.3f}, Loss: {:.9f}'.format(ep, Acc, Loss))
+        return Acc, Loss
+    
+    def draw(self, data:list, ylabel:str, title:str):
+        plt.figure(figsize=(10, 5))
+        plt.plot(data, marker='o', linestyle='-', color='b', label='')
+        plt.xlabel('Rounds')
+        plt.ylabel(ylabel)
+        plt.title(title)
+        plt.legend()
+        plt.grid(True)
+        figname = self.log_path + 'res/' + title + '.png'
+        lstname = self.log_path + 'res/' + title + '.pkl'
+        plt.savefig(figname)
+
+        with open(lstname, "wb") as f:
+            pickle.dump(data, f)
+        logging.info("Success show and save {}".format(title))
+
 
     def select_multikrum(self, res_matrix, f, k):
         #通过multi-krum，从所有client模型参数中挑选k个参与聚合，
@@ -139,10 +164,37 @@ class Base_server(ABC):
             plt.savefig(save_path)
             plt.show()
         elif mode == "MDS" :
+            def format_distance(value):
+                """格式化距离矩阵中的数值，默认保留 4 位小数，过大或过小时使用科学计数法"""
+                if abs(value) >= 10000 or (0 < abs(value) < 0.0001):
+                    return "{:.4e}".format(value)  # 科学计数法
+                else:
+                    return "{:.4f}".format(value)  # 普通小数格式（4 位）
+                
+            """计算距离矩阵并保存 CSV优化数值格式"""
+            # 计算距离矩阵
+            distance_matrix = squareform(pdist(param_matrix_, metric='euclidean'))
+            n = len(param_matrix_)
+
+            # 格式化距离矩阵
+            formatted_matrix = np.vectorize(format_distance)(distance_matrix)
+
+            # 创建 DataFrame 并存储
+            distance_df = pd.DataFrame(formatted_matrix, 
+                                       index=[f"Point_{i}" for i in range(n)], 
+                                       columns=[f"Point_{i}" for i in range(n)])
+            assert save_path[-3:] == "png"
+            distance_df.to_csv(save_path[:-3] + "csv")
+
             mds = MDS(n_components=2, dissimilarity="euclidean", random_state=42)
             mds_result = mds.fit_transform(param_matrix_)
             plt.figure(figsize=(8,6))
             plt.scatter(mds_result[:, 0], mds_result[:, 1], alpha=0.7, c=colors, edgecolors='k')
+
+            # 在每个点上标出编号
+            for i, (x, y) in enumerate(mds_result):
+                plt.annotate(str(i), (x, y), textcoords="offset points", xytext=(5, 5), ha='right', fontsize=10, color='black')
+
             plt.xlabel("MDS Component 1")
             plt.ylabel("MDS Component 2")
             plt.title(cap_name)

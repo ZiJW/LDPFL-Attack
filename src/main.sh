@@ -6,6 +6,7 @@ for file in ./params/*; do
     cp $file ./param.py
 
     echo \"Copied $file to param.py\"
+
     sleep 10
 
     # 循环执行launcher.py直到成功

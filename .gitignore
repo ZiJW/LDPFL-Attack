@@ -7,3 +7,6 @@ src/network/__pycache__
 src/dataset/adult/
 src/dataset/MNIST/
 src/log/
+log/
+log_chy/
+log_krum/

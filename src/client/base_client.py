@@ -2,6 +2,7 @@ from abc import ABC, abstractmethod
 import torch
 import logging
 import time
+import os
 
 from network import load_comm
 from model import load_model, load_criterion, load_optimizer
@@ -19,6 +20,7 @@ class Base_client(ABC):
         self.log_path = param.LOG_PATH + param.LOG_NAME
         if logging.getLogger().hasHandlers():
             logging.getLogger().handlers.clear()
+        os.makedirs(self.log_path, exist_ok=True)
         logging.basicConfig(filename=self.log_path + "/log_client{}.txt".format(id), format="%(asctime)s [%(levelname)s]: %(message)s", filemode="w", level=logging.DEBUG)
     
         self.id = id

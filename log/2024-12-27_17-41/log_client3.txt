@@ -1,4 +1,0 @@
-2024-12-27 17:41:41,913 [DEBUG]: Client 3: wait for invitation ...
-2024-12-27 17:41:49,050 [DEBUG]: Client 3 : receive invitation True
-2024-12-27 17:42:23,476 [DEBUG]: Client 3: get global weights from server: tensor([ 0.2119, -0.0912, -0.0675,  ...,  0.0104, -0.0093, -0.0118],
-       device='cuda:0')
