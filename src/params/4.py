@@ -32,7 +32,8 @@ DIST_BACKEND = "gloo"
 # DATASET = "adult"
 # FOLDER = "iid_30"
 DATASET = "MNIST"
-FOLDER = "dirichlet_20users_a1000000.0_seed98_public0.05"
+#FOLDER = "dirichlet_20users_a100000.0_seed98_public0.05"
+FOLDER = "iid_20_with_public"
 
 MODEL = "VGG_Mini"
 MODEL_PARAM = {"input_size":784, "output_size": 10, "channel": 1}
@@ -50,7 +51,7 @@ BATCH_SIZE_TEST = 1000
 LEARNING_RATE = 0.03
 
 # FL Settings
-FL_RULE = "DPSGD"
+FL_RULE = "Test"
 N_ROUND = 100
 KAP = [N_NODES - 1] * N_ROUND
 
@@ -69,15 +70,19 @@ NORM_BOUND = 5.0
 SIGMA = 90.0
 
 # Multi-Krum
-MKRUM = True
+MKRUM = False
 BROKEN_CLIENTS = []  #broken clients, used for test whether krum work or not
 MAX_FAILURE = 8
 KRUM_SELECTED = 10
 
+#Trimmed Mean
+TRIMMED_MEAN = True
+TRIMMED_MEAN_BETA = int((N_NODES - 1) / 4)
+
 # Attack Settings
 BAD_CLIENTS = [1, 2]
-ADVERSARY_ITERATION = 100
-ADVERSARY_SCALE = 1.7
+ADVERSARY_ITERATION = 10
+ADVERSARY_SCALE = 1.0
 TAPPING_CLIENTS = BAD_CLIENTS
 #TAPPING_CLIENTS = []
-TAPPING_SAME = True
+TAPPING_SAME = False

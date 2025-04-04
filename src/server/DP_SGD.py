@@ -125,21 +125,38 @@ class DPSGD_server(Base_server):
         if param.TAPPING_SAME :
             for i in param.TAPPING_CLIENTS :
                 param_matrix[i - 1] = param_matrix[param.TAPPING_CLIENTS[0] - 1] # if every tapping client update same parameter, used to reduce krum score
+        
         if param.MKRUM :
             selected_indices = self.select_multikrum(param_matrix, param.MAX_FAILURE, param.KRUM_SELECTED)
+            logging.info("Server multi-krum select aggregating clients : {}".format(selected_indices + 1))
+            bad_list_idx = torch.tensor(param.BAD_CLIENTS) - 1
+            self.visualize_parameter(param_matrix, "round {}".format(rn), "{}fig/round{}.png".format(self.log_path, rn), 
+                                     mode = "MDS", red_list=bad_list_idx.tolist(), blue_list=selected_indices.tolist())
+
+            res = torch.tensor([0.]*len(global_model)).to(param.DEVICE)
+            for idx in selected_indices:
+                res += param_matrix[idx]
+            res = res.div(selected_indices.shape[0])
+            self.unserialize_model(global_model - param.LEARNING_RATE * res)
+        elif param.TRIMMED_MEAN:
+            #res = self.handle_trimmed_mean(param_matrix, param.TRIMMED_MEAN_BETA)
+            res, select = self.trimmed_mean_with_selection_stats(param_matrix, param.TRIMMED_MEAN_BETA)
+            select = [f"{x:.5f}" for x in select]
+            logging.info("Server trimmed mean select ratio : {}".format(select))
+            self.unserialize_model(global_model - param.LEARNING_RATE * res)
         else :
             selected_indices = torch.tensor(range(0, self.size - 1))
-        logging.info("Server select aggregating clients : {}".format(selected_indices + 1))
-        bad_list_idx = torch.tensor(param.BAD_CLIENTS) - 1
-        self.visualize_parameter(param_matrix, "round {}".format(rn), "{}fig/round{}.png".format(self.log_path, rn), 
+            logging.info("Server select aggregating clients : {}".format(selected_indices + 1))
+            bad_list_idx = torch.tensor(param.BAD_CLIENTS) - 1
+            self.visualize_parameter(param_matrix, "round {}".format(rn), "{}fig/round{}.png".format(self.log_path, rn), 
                                  mode = "MDS", red_list=bad_list_idx.tolist(), blue_list=selected_indices.tolist())
         
 
-        res = torch.tensor([0.]*len(global_model)).to(param.DEVICE)
-        for idx in selected_indices:
-            res += param_matrix[idx]
-        res = res.div(selected_indices.shape[0])
-        self.unserialize_model(global_model - param.LEARNING_RATE * res)
+            res = torch.tensor([0.]*len(global_model)).to(param.DEVICE)
+            for idx in selected_indices:
+                res += param_matrix[idx]
+            res = res.div(selected_indices.shape[0])
+            self.unserialize_model(global_model - param.LEARNING_RATE * res)
 
         logging.debug("Server: round {} end".format(rn))
 

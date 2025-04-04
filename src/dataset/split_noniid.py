@@ -209,7 +209,7 @@ def _split_iid(dataset_name: str, dataset, N_clients: int, folder_name: str = No
 
 SEED = 98
 CLIENTS_NUM = 20
-NAME = "MNIST"
+NAME = "CIFAR10"
 #TYPE = "pathological"
 TYPE = "dirichlet"
 
@@ -218,7 +218,7 @@ PUBLIC = True
 PUBLIC_RATIO = 0.05
 
 # pathological
-ALPHA = 1000
+ALPHA = 500
 PROB_LOW = 0.4
 PROB_HIGH = 0.6
 
@@ -239,8 +239,10 @@ if __name__ == "__main__":
         LABEL_NUM = 10
         LABEL_NUM_PER_USER = 2
     elif NAME == "CIFAR10":
-        TRANSFORM_TRAIN = transform_CIFAR10_train
-        TRANSFORM_TEST = transform_CIFAR10_test
+        #TRANSFORM_TRAIN = transform_CIFAR10_train
+        #TRANSFORM_TEST = transform_CIFAR10_test
+        TRANSFORM_TRAIN = transforms.ToTensor()
+        TRANSFORM_TEST = transforms.ToTensor()
         LABEL_NUM = 10
         LABEL_NUM_PER_USER = 2
     elif NAME == "CIFAR100":

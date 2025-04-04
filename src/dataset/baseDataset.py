@@ -16,8 +16,19 @@ def get_dataset(dataset: str):
                                         (0.1307,), (0.3081,))
                                 ]))
     elif dataset == "CIFAR10":
-        train_dataset = datasets.CIFAR10(DEFAULT_DATASET_PATH, train=True, download=True)
-        test_dataset = datasets.CIFAR10(DEFAULT_DATASET_PATH, train=False, download=True)
+        train_dataset = datasets.CIFAR10(DEFAULT_DATASET_PATH, train=True, download=True, transform=transforms.Compose([
+                        transforms.RandomCrop(32, padding=4),
+                        transforms.RandomHorizontalFlip(),
+                        transforms.RandomVerticalFlip(),                                
+                        transforms.ToTensor(),
+                        transforms.Normalize(mean=[0.485, 0.456, 0.406],
+                                                    std=[0.229, 0.224, 0.225])
+                    ]))
+        test_dataset = datasets.CIFAR10(DEFAULT_DATASET_PATH, train=False, download=True, transform=transforms.Compose([                               
+                        transforms.ToTensor(),
+                        transforms.Normalize(mean=[0.485, 0.456, 0.406],
+                                                    std=[0.229, 0.224, 0.225])
+                    ]))
     elif dataset == "CIFAR100":
         train_dataset = datasets.CIFAR100(DEFAULT_DATASET_PATH, train=True, download=True)
         test_dataset = datasets.CIFAR100(DEFAULT_DATASET_PATH, train=False, download=True)

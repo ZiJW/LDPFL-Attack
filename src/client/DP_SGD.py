@@ -249,7 +249,7 @@ class DPSGD_client(Base_client):
 
         return gradients
 
-    def generate_clip_gradients(self, global_model, gradient_list, rn):
+    def generate_normed_gradients(self, global_model, gradient_list, rn):
         """
         训练 self.model 使其沿 loss 取反方向优化 并同时接近中心点  (median ) 
         最终输出相对于 global_model 的梯度
@@ -292,6 +292,36 @@ class DPSGD_client(Base_client):
 
         return true_gradients
 
+    def generate_clip_gradients(self, global_model, gradient_list, rn):
+        good_gradient_stack = torch.stack(gradient_list)
+        mean = torch.mean(good_gradient_stack, dim = 0)
+        self.unserialize_model(global_model - param.LEARNING_RATE * mean)
+        sorted_vals, _ = torch.sort(good_gradient_stack, dim=0)  # shape: [num_clients, num_params]
+        beta = param.TRIMMED_MEAN_BETA
+        select = sorted_vals[int(beta * param.ADVERSARY_SCALE):-int(beta * param.ADVERSARY_SCALE)]
+        clip_mini, clip_maxi = select.min(dim=0).values, select.max(dim=0).values
+        # 训练 self.model，使其沿 loss 取反方向优化
+        for i in tqdm(range(param.ADVERSARY_ITERATION), desc="client {} round {} adversarial training : ".format(self.id, rn)):
+            for data, target in self.train_loader:
+                data, target = data.to(DEVICE), target.to(DEVICE)
+
+                self.optimizer.zero_grad()
+                output = self.model(data)
+
+                # 计算 loss（取反方向优化）
+                loss = -self.criterion(output, target)
+                loss.backward()
+                torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=10.0)
+                self.optimizer.step()
+            theta = self.serialize_model()
+            gradient = (global_model - theta) / param.LEARNING_RATE
+            gradient_clip = torch.clamp(gradient, min=clip_mini, max=clip_maxi)
+            self.unserialize_model(global_model - param.LEARNING_RATE * gradient_clip)
+
+        updated_model_params = self.serialize_model()
+        true_gradients = (global_model - updated_model_params) / param.LEARNING_RATE
+        return true_gradients
+
     def evaluate(self):
         """
             Train the model on all rounds.
@@ -301,8 +331,13 @@ class DPSGD_client(Base_client):
             if self.id in param.TAPPING_CLIENTS :
                 global_model = self.receive_global_model()
                 good_gradients = self.receive_other_parameter()
-                #bad_gradient = self.generate_fit_gradients(global_model, good_gradients, rn)
-                bad_gradient = self.generate_clip_gradients(global_model, good_gradients, rn)
+                if param.MKRUM:
+                    #bad_gradient = self.generate_fit_gradients(global_model, good_gradients, rn)
+                    bad_gradient = self.generate_normed_gradients(global_model, good_gradients, rn)
+                elif param.TRIMMED_MEAN:
+                    bad_gradient = self.generate_clip_gradients(global_model, good_gradients, rn)
+                else:
+                    assert(0)
                 logging.debug("Client {} bad model parameter shape : {}, other model parameter shape : {}".format(self.id, bad_gradient.shape, good_gradients[0].shape))
                 self.send2server(bad_gradient)
             else :

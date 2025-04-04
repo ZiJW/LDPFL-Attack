@@ -109,8 +109,56 @@ class Base_server(ABC):
             pickle.dump(data, f)
         logging.info("Success show and save {}".format(title))
 
+    def handle_trimmed_mean(self, param_matrix, beta):
+        """
+        param_matrix: List[Tensor], each of shape (n_params,)
+        beta: int, number of values to trim on each side
+        return: Tensor, aggregated parameters
+        """
+        # Stack tensors to shape: (num_clients, num_params)
+        stacked = torch.stack(param_matrix, dim=0)  # shape: [num_clients, num_params]
+
+        # Sort along the client dimension (dim=0)
+        sorted_vals, _ = torch.sort(stacked, dim=0)  # shape: [num_clients, num_params]
+
+        # Remove top beta and bottom beta values along client dimension
+        trimmed_vals = sorted_vals[beta:-beta]  # shape: [num_clients - 2*beta, num_params]
+
+        # Compute mean over remaining clients
+        return trimmed_vals.mean(dim=0)
+
+    def trimmed_mean_with_selection_stats(self, param_matrix, beta):
+        """
+        param_matrix: List[Tensor], each of shape (n_params,)
+        beta: int, number of values to trim on each side
+        return: 
+            - Tensor of aggregated parameters (shape: [n_params])
+            - Tensor of shape [num_clients] representing the selection ratio of each client
+        """
+        # Stack: shape [num_clients, n_params]
+        stacked = torch.stack(param_matrix, dim=0)  # shape: [m, d]
+        num_clients, num_params = stacked.shape
+
+        # Sort along client dimension
+        sorted_vals, sorted_indices = torch.sort(stacked, dim=0)  # both shape: [m, d]
+
+        # Trim top and bottom beta
+        trimmed_vals = sorted_vals[beta: num_clients - beta]  # shape: [m - 2β, d]
+        trimmed_indices = sorted_indices[beta: num_clients - beta]  # shape: [m - 2β, d]
+
+        # Compute mean
+        aggregated = trimmed_vals.mean(dim=0)  # shape: [d]
+
+        # Count how many times each client appears in trimmed_indices
+        selection_counts = torch.bincount(trimmed_indices.flatten(), minlength=num_clients)  # shape: [m]
+
+        # 归一化：被选中维度数 / 总参数维度数
+        selection_ratio = selection_counts.float() / num_params  # shape: [m]
+
+        return aggregated, selection_ratio
 
     def select_multikrum(self, res_matrix, f, k):
+        logging.info("Updated MKrum selection")
         #通过multi-krum，从所有client模型参数中挑选k个参与聚合，
         res_matrix_tensor = torch.stack(res_matrix, dim=0)
         # 计算距离矩阵
@@ -118,11 +166,11 @@ class Base_server(ABC):
         dist_matrix = torch.zeros((n, n), device=param.DEVICE)
         # 使用广播和矩阵运算计算距离
         for i in range(n):
-            dist_matrix[i] = torch.norm(res_matrix_tensor - res_matrix_tensor[i], dim=1)
+            dist_matrix[i] = torch.norm(res_matrix_tensor - res_matrix_tensor[i], dim=1) ** 2
         sorted_matrix, sorted_indices = torch.sort(dist_matrix, dim=1, descending=False)
 
-        #MKrum对每个client的分数是自己和最近的n - f - 1个参数的距离之和
-        MKrum_score = torch.sum(sorted_matrix[:, :n - f - 1 + 1], dim = 1)
+        #MKrum对每个client的分数是自己和最近的n - f - 2个参数的距离之和
+        MKrum_score = torch.sum(sorted_matrix[:, :n - f - 2 + 1], dim = 1)
         #因为和自己的距离是0，所以在n - f - 1上要加1
         sorted_score, indices = torch.sort(MKrum_score, dim=0, descending=False)
         selected_indices = indices[:k]

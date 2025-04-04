@@ -6,6 +6,8 @@ src/model/__pycache__
 src/network/__pycache__
 src/dataset/adult/
 src/dataset/MNIST/
+src/dataset/CIFAR10/
+src/dataset/cifar-10-batches-py/
 src/log/
 log/
 log_chy/

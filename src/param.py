@@ -23,7 +23,7 @@ LOG_NAME = strftime("%Y-%m-%d_%H-%M/", localtime())
 
 COMM = "fake_socket"
 IP_ADDRESS = "127.0.0.1"
-IP_PORT = "11417"
+IP_PORT = "11416"
 
 BUFFER_SIZE = 8192
 DIST_BACKEND = "gloo"
@@ -32,8 +32,7 @@ DIST_BACKEND = "gloo"
 # DATASET = "adult"
 # FOLDER = "iid_30"
 DATASET = "MNIST"
-FOLDER = "dirichlet_20users_a1000000.0_seed98_public0.05"
-#FOLDER = "iid_20"
+FOLDER = "dirichlet_20users_a900_seed98_public0.05"
 
 MODEL = "VGG_Mini"
 MODEL_PARAM = {"input_size":784, "output_size": 10, "channel": 1}
@@ -46,12 +45,12 @@ N_EPOCH = 1
 
 CRITERION = "CrossEntropy"
 OPTIMIZER = "SGD"
-BATCH_SIZE_TRAIN = 64
+BATCH_SIZE_TRAIN = 32
 BATCH_SIZE_TEST = 1000
-LEARNING_RATE = 0.003
+LEARNING_RATE = 0.03
 
 # FL Settings
-FL_RULE = "Test"
+FL_RULE = "DPSGD"
 N_ROUND = 100
 KAP = [N_NODES - 1] * N_ROUND
 
@@ -75,10 +74,15 @@ BROKEN_CLIENTS = []  #broken clients, used for test whether krum work or not
 MAX_FAILURE = 8
 KRUM_SELECTED = 10
 
+
+#Trimmed Mean
+TRIMMED_MEAN = False
+TRIMMED_MEAN_BETA = int((N_NODES - 1) / 4)
+
 # Attack Settings
-BAD_CLIENTS = [1, 2, 3, 4, 5]
-TAPPING_CLIENTS = BAD_CLIENTS
-TAPPING_SAME = True
-#TAPPING_CLIENTS = []
+BAD_CLIENTS = [1, 2]
 ADVERSARY_ITERATION = 10
-ADVERSARY_SCALE = 1.5
+ADVERSARY_SCALE = 1.0
+TAPPING_CLIENTS = BAD_CLIENTS
+#TAPPING_CLIENTS = []
+TAPPING_SAME = True

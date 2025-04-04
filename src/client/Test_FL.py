@@ -1,429 +1,345 @@
-import random
-import time
-import math
-import logging
 import torch
-import queue
-import threading
+import logging
+from geom_median.torch import compute_geometric_median 
+from base_client import Base_client
+from model import load_model, load_criterion, load_optimizer
+from util import load_dataset, ExpM, pm_perturbation
+from param import DEVICE
+import param
 from tqdm import tqdm
 
-from base_client import Base_client
-from geom_median.torch import compute_geometric_median 
-from util import load_dataset
-import param
-from param import DEVICE
-    
-def data_pertubation(W, c: float, r: float, eps: float, type: str = "normal"):
-    sz = len(W)
-    with torch.no_grad():
-        # torch.clamp(W, min=c-r, max=c+r)
-        coff = (math.exp(eps) + 1) / (math.exp(eps) - 1)
+class Transf(torch.nn.Module):
+    def __init__(self, input_size) -> None:
+        super().__init__()
+        self.params = torch.nn.ParameterDict({
+            'alpha': torch.nn.Parameter(torch.rand(input_size)),
+            'beta': torch.nn.Parameter(torch.rand(input_size))
+        })
 
-        Pb = (((W - c) / coff) + r)
-        rnd = (torch.rand(sz) * 2.0 * r).to(DEVICE)
-        cmp = torch.gt(Pb, rnd).to(DEVICE)
-        if type == "bad":
-            cmp = ~cmp
+    def forward(self, x):
+        x = x.view(x.shape[0], -1)
+        return torch.add(torch.mul(x, self.params['alpha']), self.params['beta'])
 
-        res = ((cmp) * (c + r * coff)) + ((~cmp) * (c - r * coff))
-    return res
-
-class Test_client(Base_client):
+class Test_client(Base_client):  
     """
-        The client in LDP-FL
+        The client in FedSel
     """
+
     def __init__(self, id):
-        super().__init__(id, param.N_NODES, param.MODEL, param.MODEL_PARAM, 
+        super().__init__(id, param.N_NODES, param.MODEL, param.MODEL_PARAM,
                          param.OPTIMIZER, param.LEARNING_RATE, param.CRITERION, comm=param.COMM)
-        self.train_loader, = load_dataset(param.DATASET, param.FOLDER, [("train", True)], idx=self.id)
-        self.epoch = param.N_EPOCH
+        self.train_loader = load_dataset(param.DATASET, param.FOLDER, [("train", True)], idx=self.id)[0]
+        self.valid_loader = load_dataset(param.DATASET, param.FOLDER, [("public", False)])[0] if id in param.BAD_CLIENTS else []
         self.round = param.N_ROUND
+        self.privacy1_percent = 0.1
+        self.layer0 = Transf(param.MODEL_PARAM["input_size"]).to(param.DEVICE)
+        self.ldp = param.LDP and self.id not in param.BAD_CLIENTS
 
-        if param.CLIENTS_WEIGHTS != None:
-            logging.info("Client {} has weight {}".format(self.id, param.CLIENTS_WEIGHTS[self.id]))
         if self.id in param.BAD_CLIENTS:
             logging.info("Client {} is an adversary!".format(self.id))
-        self.weights_buffer = [queue.Queue(maxsize=self.size - 1) for idx in range(len(self.model_size))]
 
-    def chose(self):
-        logging.debug("Client {}: wait for invitation ...".format(self.id))
-        chose = self.comm.recv(0)
-        self.comm.send(0, "ACK")
-        logging.debug("Client {}: receive invitation {}".format(self.id, chose))
-        return chose
-    
-    def train(self):
+    def train(self, rn):
         """
             Training for 1 round.
-        """        
+        """
+        logging.debug("Client {}: wait for invitation ...".format(self.id))
+
+        chose = self.comm.recv(0)
+        if not chose:
+            self.comm.send(0, "ACK")
+            return
+        
+        logging.debug("Client {} : receive invitation {}".format(self.id, chose))
+        self.comm.send(0, "ACK")
+
         # Download the global model parameters
-        global_model, weight_range = self.comm.recv(0)
-        logging.debug("Client {}: get global weights from server".format(self.id))
-
+        global_model = self.comm.recv(0)
+        logging.debug("Client {}: get global weights from server: {}".format(self.id, global_model))
         self.unserialize_model(global_model)
-        logging.debug("Client {}: training({}) ...".format(self.id, len(self.train_loader)))
-        for ep in range(self.epoch):
-            for batch_idx, (data, target) in enumerate(self.train_loader):
-                # Training
-                data, target = data.to(DEVICE), target.to(DEVICE)
-                self.optimizer.zero_grad()
-                output = self.model(data)
-                if self.id in param.BAD_CLIENTS:
-                    loss = -self.criterion(output, target)
-                else:
-                    loss = self.criterion(output, target)
-                loss.backward()
-                self.optimizer.step()
-        return weight_range
 
-    def receive_global_model_range(self):
-        global_model, weight_range = self.comm.recv(0)
-        logging.debug("Client {}: get global weights from server".format(self.id))
-        return global_model, weight_range
-    
-    def receive_other_parameters(self):
-        record_param = self.comm.recv(0)
-        logging.debug("Client {} got other clients' parameter from server".format(self.id))
-        param_list = [paramlist for paramlist in record_param if paramlist != []]
-        assert len(param_list) == self.size - 1 - len(param.TAPPING_CLIENTS)
-        #compute_geometric_median(param_list).median
-        return param_list
+        torch.autograd.set_detect_anomaly(True)
+        gradients = torch.tensor([0.]*len(global_model)).to(param.DEVICE)
+        
+        if self.id in param.BAD_CLIENTS and param.ADVERSARY_ITERATION != 0:
+            est_good_gradients = self.fit_on(self.train_loader, len(global_model))[1].mul((param.N_NODES-2)/(param.N_NODES-1))
+            self.unserialize_model(global_model-est_good_gradients*param.LEARNING_RATE)
+            std_acc = self.test_on_public(self.model)[0]*0.9
 
-    def get_2val_geomedian(self, weight_range, good_params):
-        #定义LDPFL下的集合平均值，对于每一个参数，如果同位置的C + r多，取C+r，反之亦然，如果两者一样多，取C
-        num_layers = len(good_params[0])  # 获取层数
-        num_clients = len(good_params)  # 获取客户端数
-        result = []
-    
-        for layer in range(num_layers):
-            layer_params = torch.stack([client[layer] for client in good_params])  # 获取该层的所有客户端参数 (num_clients, param_size)
-            unique_values = torch.unique(layer_params)  # 该层两个可能的值
+            for i in range(param.ADVERSARY_ITERATION):
+                est_gradients = est_good_gradients+gradients.div(param.N_NODES-1)
+                self.unserialize_model(global_model-est_gradients*param.LEARNING_RATE)
+                bad_gradients = self.fit_on(self.train_loader, len(global_model), rev=True)[1]
+                gradients += bad_gradients
+                for j in range(10):
+                    self.unserialize_model(global_model-gradients*param.LEARNING_RATE)
+                    acc = self.test_on_public(self.model)[0]
+                    if acc > std_acc:
+                        break
+                    valid_set_gradients = self.fit_on(self.valid_loader, len(global_model))[1]
+                    gradients += valid_set_gradients
 
-            if len(unique_values) > 2:
-                print(unique_values)
-                raise ValueError(f"Layer {layer} does not have exactly two unique values.")
+                acc = self.test_on_public(self.model)[0]
+                logging.info("Client {}: iteration {}, valid set acc = {}, std-acc : {}".format(self.id, i, acc, std_acc))
+            return_gradients = gradients
+        elif self.id in param.BAD_CLIENTS:
+            logging.debug("Client {}: iteration {}, generate adversarial gradients".format(self.id, rn))
+            layer0_grads, train_set_gradients = self.fit_on(self.train_loader, len(global_model), rev=True, transform=param.USE_TRANSFORM)
+            res = []
+            for val in self.layer0.state_dict().values():
+                res.append(val.view(-1))
+            res = torch.cat(res)
+            self.unserialize_model(res-layer0_grads*param.LEARNING_RATE, self.layer0)
+            self.unserialize_model(self.serialize_model()- train_set_gradients * param.LEARNING_RATE * param.ADVERSARY_SCALE)
+            return_gradients = train_set_gradients * param.ADVERSARY_SCALE
+        else:
+            layer0_grads, train_set_gradients = self.fit_on(self.train_loader, len(global_model), transform=param.USE_TRANSFORM)
+            res = []
+            for val in self.layer0.state_dict().values():
+                res.append(val.view(-1))
+            res = torch.cat(res)
+            self.unserialize_model(res-layer0_grads*param.LEARNING_RATE, self.layer0)
+            self.unserialize_model(self.serialize_model()-train_set_gradients*param.LEARNING_RATE)
+            return_gradients = train_set_gradients
 
-            c, r = weight_range[layer]["center"], weight_range[layer]['range']  # 获取该层的center值
-            eps = param.EPS
-            coff = (math.exp(eps) + 1) / (math.exp(eps) - 1)
-            C_k1, C_k2 = c + r * coff, c - r * coff
-            # 统计每个位置 C_k1 和 C_k2 出现的次数
-            count_C_k1 = (layer_params > c).sum(dim=0)
-            count_C_k2 = (layer_params < c).sum(dim=0)
+        logging.debug("CLient {} : gradients : {}".format(self.id, return_gradients))
+        # logging.debug("Client {}: selected_index = {}, max absval = {}".format(self.id, selected_index, torch.max(accum_grad)))
+        return return_gradients
 
-            # 选择出现次数最多的值
-            majority_mask = count_C_k1 > count_C_k2
-            tie_mask = count_C_k1 == count_C_k2
-
-            # 生成最终结果
-            aggregated_tensor = torch.where(majority_mask, C_k1, C_k2)
-            aggregated_tensor = torch.where(tie_mask, C_k1, aggregated_tensor)
-
-            result.append(aggregated_tensor)
-        return result
-    
-    def get_median(self, good_params):
-        temp_params = [torch.cat(good_params[idx]) for idx in range(len(good_params))]
-        return torch.median(torch.stack(temp_params), dim=0)[0]
-
-    def clip_2val(self, model_param, weight_range):
-        eps = param.EPS
-        for idx in range(len(model_param)):
-            coff = (math.exp(eps) + 1) / (math.exp(eps) - 1)
-            c, r = weight_range[idx]["center"], weight_range[idx]["range"]
-            model_param[idx] = torch.where(model_param[idx] > c,c + r * coff, c - r * coff)
-        return model_param
-    
-    def flatten2layer(self, params):
-        current_index = 0
-        result = []
-        for val in self.model.state_dict().values():
-            sz = val.numel()
-            result.append(params[current_index: current_index + sz].view(-1))
-            current_index += sz
-        return result
-    def layer2flatten(self, params):
-        return torch.cat(params)
-    
-    def generate_bad_param(self, global_model, weight_range, good_params, rn):
-        #方法：取其他加上自己的平均值，反向训练，每次用二值剪裁参数差值（即自己所需要的参数）
-        median = self.get_2val_geomedian(weight_range, good_params) #初始化为几何平均数
-        median_flatten = torch.cat(median)
-        good_num, bad_num = len(good_params), len(param.TAPPING_CLIENTS)
-        all_num = (good_num + bad_num)
-        good_flatten_params = [torch.cat(client_param) for client_param in good_params]
-        good_flatten_sum = torch.sum(torch.stack(good_flatten_params, dim=0), dim=0)
-        avg_params = (median_flatten * bad_num + good_flatten_sum) / all_num
-        self.unserialize_model(avg_params)
-        for i in tqdm(range(param.ADVERSARY_ITERATION), desc="client {} round {} adversarial training : ".format(self.id, rn)):
-            for data, target in self.train_loader:
-                data, target = data.to(DEVICE), target.to(DEVICE)
-                self.optimizer.zero_grad()
-                output = self.model(data)
-
-                # 计算 loss（取反方向优化）
-                loss = -self.criterion(output, target)
-                loss.backward()
-                torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=10.0)
-                self.optimizer.step()
-            avg_params = self.serialize_model()
-            adv_params = (avg_params * all_num - good_flatten_sum) / bad_num
-            tmp = self.clip_2val(self.flatten2layer(adv_params), weight_range)
-            #添加约束，来绕过krum
-            adv_params = self.layer2flatten(tmp)
-            avg_params = (adv_params * bad_num + good_flatten_sum) / all_num
-            self.unserialize_model(avg_params)
-        return self.flatten2layer(adv_params)
-
-        """median = self.get_2val_geomedian(weight_range, good_params)
-        self.unserialize_model(global_model)
-        for i in tqdm(range(param.ADVERSARY_ITERATION), desc="client {} round {} adversarial training : ".format(self.id, rn)):
-            for data, target in self.train_loader:
-                data, target = data.to(DEVICE), target.to(DEVICE)
-
-                self.optimizer.zero_grad()
-                output = self.model(data)
-
-                # 计算 loss（取反方向优化）
-                loss = -self.criterion(output, target)
-                loss.backward()
-                torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=10.0)
-                self.optimizer.step()
-        #model_param = self.handle_weights(weight_range, param.EPS)
-        model_param = self.serialize_model(type="raw")
-        eps = param.EPS
-        for idx in range(len(model_param)):
-            coff = (math.exp(eps) + 1) / (math.exp(eps) - 1)
-            c, r = weight_range[idx]["center"], weight_range[idx]["range"]
-            model_param[idx] = torch.where(model_param[idx] > c,c + r * coff, c - r * coff)
-        selected_layer = param.ADVERSARY_LAYER
-        for idx in selected_layer:
-            median[idx] = model_param[idx]
-        return median"""
-    
-    def get_min_diff(self, weight_range, good_params, rn, k=1):
-        median = self.get_2val_geomedian(weight_range, good_params) #几何平均数
-        cnt = torch.zeros(len(good_params))
-        for idx in range(len(good_params[0])):
-            c, r = weight_range[idx]['center'], weight_range[idx]['range']
-            median_offset = median[idx] > c
-            good_offset = [client_param[idx] > c for client_param in good_params]
-            diff_cnt = [torch.sum(median_offset ^ offset) for offset in good_offset]
-            cnt += torch.tensor(diff_cnt)
-        val, idx = torch.topk(cnt, k, dim=0, largest=False)
-        return val.max().int().item()
-            
-
-    def generate_bad_param_selective(self, global_model, weight_range, good_params, rn, topk=10000):
-        """
-        基于反向训练后偏移度选择关键参数进行模型投毒。
-        仅对 top-k 偏移最大的维度进行扰动，并排除掉与 median 一致的维度。
-        """
-        import torch.nn.functional as F
-
-        # 初始化模型
-        median = self.get_2val_geomedian(weight_range, good_params)
-        median_flatten = torch.cat(median)
-        good_num, bad_num = len(good_params), len(param.TAPPING_CLIENTS)
-        all_num = good_num + bad_num
-        good_flatten_params = [torch.cat(p) for p in good_params]
-        good_flatten_sum = torch.sum(torch.stack(good_flatten_params, dim=0), dim=0)
-
-        # 初始设为中位数 + good 平均
-        avg_params = (median_flatten * bad_num + good_flatten_sum) / all_num
-        self.unserialize_model(avg_params)
-
-        # === 1. 执行反向训练 ===
-        for i in tqdm(range(param.ADVERSARY_ITERATION), desc="client {} round {} adversarial training : ".format(self.id, rn)):
-            for data, target in self.train_loader:
-                data, target = data.to(DEVICE), target.to(DEVICE)
-                self.optimizer.zero_grad()
-                output = self.model(data)
-                loss = -self.criterion(output, target)  # 反方向优化
-                loss.backward()
-                torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=10.0)
-                self.optimizer.step()
-
-        # === 2. 获取训练后模型参数 ===
-        final_param = self.serialize_model()
-        diff_vector = final_param - median_flatten
-
-        # === 3. 计算每层归一化后的偏离度 ===
-        offset_scores = []
-        offset_masks = []
-        ptr = 0
-        all_adv_param = self.clip_2val(self.flatten2layer(final_param), weight_range)
-        all_adv_flatten = torch.cat(all_adv_param)
-
-        for idx, w in enumerate(weight_range):
-            length = len(median[idx].view(-1))
-            center, radius = w['center'], w['range']
-            coff = ((math.exp(param.EPS)+1)/(math.exp(param.EPS)-1)) 
-            norm_factor = radius * coff + 1e-6
-            layer_diff = diff_vector[ptr:ptr+length] / norm_factor  # 归一化
-
-            # 生成不选 mask：该维度和 median 中一致的不要
-            median_val = median[idx].view(-1)
-            adv_val = all_adv_flatten[ptr:ptr+length]
-            valid_mask = ((median_val - center) * (adv_val - center) <= 0.0)
-            offset_scores.append(torch.abs(layer_diff))
-            offset_masks.append(valid_mask)
-            ptr += length
-
-        # === 4. 合并并选 top-k ===
-        flat_scores = torch.cat(offset_scores)
-        flat_mask = torch.cat(offset_masks)
-        flat_valid_scores = flat_scores * flat_mask.float()  # 不合法位置得分为0
-        topk_val, topk_idx = torch.topk(flat_valid_scores, topk)
-        critical_mask = torch.zeros_like(flat_scores, dtype=torch.bool)
-        critical_mask[topk_idx] = True
-
-        # === 5. 生成最终扰动参数 ===
-        adv_param = median_flatten.clone()
-        adv_param[critical_mask] = all_adv_flatten[critical_mask]
-
-        return self.flatten2layer(adv_param)
-    
-    def generate_bad_param_fisher(self, global_model, weight_range, good_params, rn, topk=10000, fisher_batch_num=3):
-        """
-        使用 Fisher 信息计算参数重要性，选择 top-k 参数维度进行有针对性的模型投毒。
-        """
-        median = self.get_2val_geomedian(weight_range, good_params)
-        median_flatten = torch.cat(median)
-        good_num, bad_num = len(good_params), len(param.TAPPING_CLIENTS)
-        all_num = good_num + bad_num
-        good_flatten_params = [torch.cat(p) for p in good_params]
-        good_flatten_sum = torch.sum(torch.stack(good_flatten_params, dim=0), dim=0)
-
-        # 设置模型初始状态
-        avg_params = (median_flatten * bad_num + good_flatten_sum) / all_num
-        self.unserialize_model(avg_params)
-        self.model.train()
-
-        # === Step 1: 计算 Fisher 信息分数（梯度平方平均）并考虑radius在内 ===
-        fisher_scores = [torch.zeros_like(p.data) for p in self.model.parameters()]
-        batch_count = 0
-
-        for batch in self.train_loader:
-            data, target = batch
+    def fit_on(self, loader, model_size, rev = False, transform=False):
+        gradients = torch.tensor([0.]*model_size).to(param.DEVICE)
+        layer0_grads = torch.tensor([0.]*(2*param.MODEL_PARAM["input_size"])).to(param.DEVICE)
+        cnt_samples = 0
+        for data, target in loader:
+            # Training
+            # logging.debug("Client {}: training in batch {} with optimer={} ...".format(self.id, batch_idx, type(self.optimizer)))
             data, target = data.to(DEVICE), target.to(DEVICE)
             self.optimizer.zero_grad()
-            output = self.model(data)
-            loss = self.criterion(output, target)
+            output = self.model(self.layer0(data)) if transform is True else self.model(data)
+            # logging.debug("output = {}".format(output))
+            # logging.debug("target = {}".format(target))
+            loss = -self.criterion(output, target) if rev else self.criterion(output, target)
             loss.backward()
+            
+            gradient = []
+            for val in self.model.parameters():
+                gradient.append(val.grad.view(-1))
+            gradient = torch.cat(gradient)
+            norm = torch.sqrt(torch.sum(torch.pow(gradient, 2)))
+            if norm > param.NORM_BOUND:
+                gradient.div_(norm.div(param.NORM_BOUND))
+            #noise = self.GaussianNoise(param.SIGMA, param.NORM_BOUND, gradients.shape)
+            #logging.debug("Client {} norm : {} parameter : {} with noise : {}".format(self.id, norm, gradients, noise))
+            #gradient += noise
+            gradient.div_(len(data))
+            gradients += gradient
+            cnt_samples += len(data)
+        
+            if transform is True:
+                gradient = []
+                for val in self.layer0.parameters():
+                    gradient.append(val.grad.view(-1))
+                gradient = torch.cat(gradient)
+                norm = torch.sqrt(torch.sum(torch.pow(gradient, 2)))
+                if norm > param.NORM_BOUND:
+                    gradient.div_(norm.div(param.NORM_BOUND))
+                gradient.div_(len(data))
+                layer0_grads += gradient
+        if self.ldp:
+            noise = self.GaussianNoise(param.SIGMA, param.NORM_BOUND, gradients.shape) / cnt_samples
+            logging.debug("Client {} norm : {} parameter : {} with noise : {}".format(self.id, norm, gradients, noise))
+            gradients += noise
 
-            # 梯度平方累加
-            for idx, params in enumerate(self.model.parameters()):
-                if params.grad is not None:
-                    fisher_scores[idx] += (params.grad.detach() ** 2)
-            batch_count += 1
-            if batch_count >= fisher_batch_num:
-                break
+        return layer0_grads, gradients
 
-        fisher_scores = [score / batch_count for score in fisher_scores]
-        flat_scores = torch.cat([s.view(-1) for s in fisher_scores])
-        if param.FISHER_NORMALIZE :
-            normalizers = []
-            ptr = 0
-            for idx, w in enumerate(weight_range):
-                length = len(median[idx].view(-1))
-                radius = w['range']
-                eps = param.EPS
-                coff = (math.exp(eps) + 1) / (math.exp(eps) - 1)
-                norm = radius * coff + 1e-6  # 避免除以0
-                normalizers.append(torch.full((length,), norm, device=DEVICE))
-                ptr += length
+    def test_on_public(self, model):
+        """
+            Test the accuracy and loss on validation dataset.
+        """
+        Acc, Loss = 0, 0.0
+        LossList = []
+        N = 0
+        for data, target in self.valid_loader:
+            with torch.no_grad():
+                data, target = data.to(param.DEVICE), target.to(param.DEVICE)
+                output = model(data)
+                loss = self.criterion(output, target)
+                _, pred = torch.max(output, dim=1)
+                
+                Loss += loss.item()
+                LossList.append(loss.item())
+                Acc += torch.sum(pred.eq(target)).item()
+                N += len(target)
+
+        Acc = Acc / N
+        Loss = Loss / len(self.valid_loader)
+        return Acc, Loss
+
+    def send2server(self, msg):
+        self.comm.send(0, msg)
+        assert self.comm.recv(0) == "ACK"
+        logging.debug("Client {}: send local grads to server".format(self.id))
+
+    def receive_global_model(self):
+        logging.debug("Client {}: wait for invitation ...".format(self.id))
+
+        chose = self.comm.recv(0)
+        if not chose:
+            self.comm.send(0, "ACK")
+            return
+        
+        logging.debug("Client {} : receive invitation {}".format(self.id, chose))
+        self.comm.send(0, "ACK")
+
+        # Download the global model parameters
+        global_model = self.comm.recv(0)
+        logging.debug("Client {}: get global weights from server: {}".format(self.id, global_model))
+        return global_model
+
+    def receive_other_parameter(self):
+        record_param = self.comm.recv(0)
+        logging.debug("Client {} got other clients' parameter from server".format(self.id))
+        param_list = [value for idx, value in record_param]
+        return param_list
     
-            normalizer_vector = torch.cat(normalizers)
-            flat_scores = flat_scores / normalizer_vector  # scale down high-risk layers
+    def generate_fit_gradients(self, global_model, gradient_list, rn):
+        """
+        训练 self.model 使其沿 loss 取反方向优化 并同时接近中心点  (median ) 
+        最终输出相对于 global_model 的梯度
+        """
+        # 计算几何中位数（gradient_list 中的几何中心点）
+        median = compute_geometric_median(gradient_list).median
+        closest_gradient = min(gradient_list, key=lambda g: torch.norm(g - median))
+        # 允许的偏移范围是最近点到中心点之间的差值*lr，这表示两个对应模型之间的距离
+        epsilon = torch.norm(param.LEARNING_RATE * (closest_gradient - median), p=2) 
 
-        # === Step 2: 执行 adversarial training ===
+        self.unserialize_model(global_model - param.LEARNING_RATE * median)
+
+        theta_target = self.serialize_model()  # 目标中心点
+        lambda_reg = param.LAMBDA_REG  # 正则项权重
+        k = param.HINGE_POWER  # 控制增长速率（通常 k=2）
+
+        # 训练 self.model，使其沿 loss 取反方向优化
+        for i in  tqdm(range(param.ADVERSARY_ITERATION), desc="client {} round {} adversarial training : ".format(self.id, rn)):
+            for data, target in self.train_loader:
+                data, target = data.to(DEVICE), target.to(DEVICE)
+
+                self.optimizer.zero_grad()
+                output = self.model(self.layer0(data)) if param.USE_TRANSFORM else self.model(data)
+
+                # 计算 loss（取反方向优化）
+                loss = -self.criterion(output, target)  # 逆向优化
+
+                # 计算指数正则项
+                theta = self.serialize_model()
+                norm_diff = torch.norm(theta - theta_target, p=2)
+                reg_loss = lambda_reg * torch.pow(torch.clamp(norm_diff - epsilon, min=0), k)
+
+                # 总损失
+                total_loss = loss + reg_loss
+                total_loss.backward()
+                for params in self.model.parameters():
+                    if params.grad is not None:
+                        torch.nn.utils.clip_grad_norm_(params, max_norm=10.0)  # 分层裁剪
+
+                self.optimizer.step()
+            logging.debug("Client {} : fit adversarial training round {}, loss1 : {}, reg_loss : {}".format(self.id, i, loss, reg_loss))
+
+        updated_model_params = self.serialize_model()
+        gradients = (global_model - updated_model_params) / param.LEARNING_RATE
+
+        return gradients
+
+    def generate_normed_gradients(self, global_model, gradient_list, rn):
+        """
+        训练 self.model 使其沿 loss 取反方向优化 并同时接近中心点  (median ) 
+        最终输出相对于 global_model 的梯度
+        """
+        # 计算几何中位数（gradient_list 中的几何中心点）
+        median = compute_geometric_median(gradient_list).median
+        reference_gradient = min(gradient_list, key=lambda g: torch.norm(g - median))
+        # 允许的偏移范围是最近点到中心点之间的差值*lr，这表示两个对应模型之间的距离
+        C = param.ADVERSARY_SCALE * torch.norm(param.LEARNING_RATE * (reference_gradient - median), p=2) 
+
+        self.unserialize_model(global_model - param.LEARNING_RATE * median)
+        theta_target = self.serialize_model()  # 目标中心点
+        logging.debug("Client {} C {} parameter {}".format(self.id, C, theta_target))
+
+        # 训练 self.model，使其沿 loss 取反方向优化
         for i in tqdm(range(param.ADVERSARY_ITERATION), desc="client {} round {} adversarial training : ".format(self.id, rn)):
             for data, target in self.train_loader:
                 data, target = data.to(DEVICE), target.to(DEVICE)
+
                 self.optimizer.zero_grad()
                 output = self.model(data)
-                loss = -self.criterion(output, target)  # 反向训练
+
+                # 计算 loss（取反方向优化）
+                loss = -self.criterion(output, target)
                 loss.backward()
                 torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=10.0)
                 self.optimizer.step()
-
-        final_param = self.serialize_model()
-        all_adv_param = self.clip_2val(self.flatten2layer(final_param), weight_range)
-        all_adv_flatten = torch.cat(all_adv_param)
-
-        # === Step 3: 构建扰动掩码，只考虑与 median 不一致的维度 ===
-        offset_masks = []
-        ptr = 0
-        for idx, w in enumerate(weight_range):
-            length = len(median[idx].view(-1))
-            center = w['center']
-            median_val = median[idx].view(-1)
-            adv_val = all_adv_flatten[ptr:ptr+length]
-            valid_mask = ((median_val - center) * (adv_val - center) <= 0.0)
-            offset_masks.append(valid_mask)
-            ptr += length
-
-        flat_mask = torch.cat(offset_masks)
-        valid_scores = flat_scores * flat_mask.float()
-
-        # === Step 4: Top-k 筛选 + 应用扰动 ===
-        topk_val, topk_idx = torch.topk(valid_scores, topk)
-        critical_mask = torch.zeros_like(flat_scores, dtype=torch.bool)
-        critical_mask[topk_idx] = True
-
-        adv_param = median_flatten.clone()
-        adv_param[critical_mask] = all_adv_flatten[critical_mask]
-
-        return self.flatten2layer(adv_param)
+            #norm clip
+            theta = self.serialize_model()
+            logging.debug("Client {} round {}.{} parameter {}".format(self.id, rn, i, theta))
+            diff = theta - theta_target
+            rate = max(1.0, torch.norm(diff, p=2) / (C))
+            clipped_theta = theta_target + diff / rate
+            self.unserialize_model(clipped_theta)
+            logging.debug("Client {} round {}.{} rate {} parameter {}".format(self.id, rn, i, rate, clipped_theta))
 
 
-    def handle_weights(self, weight_range, eps):
-        """
-            Add noise on weights.
-        """
-        global_model = self.serialize_model(type="raw")
-        for idx in range(len(global_model)):
-            logging.debug("Client {}: [{}] c={}, r={}".format(self.id, idx, weight_range[idx]["center"], weight_range[idx]["range"]))
-            global_model[idx] = data_pertubation(global_model[idx], weight_range[idx]["center"], weight_range[idx]["range"], eps)
-        return global_model
-    
-    def send_weights(self, global_model):
-        latency = [(random.uniform(0, param.LATENCY_T), i) for i in range(len(global_model))]
-        latency.sort()
-        for idx, (lt, ln) in enumerate(latency):
-            if idx == 0:
-                time.sleep(lt)
-            else:
-                time.sleep(lt - latency[idx - 1][0])
-            logging.debug("Send layer {} = {}".format(ln, global_model[ln][:10]))
-            self.comm.send(0, {"ln": ln, "weight": global_model[ln]})
-            if idx < len(latency) - 1:
-                assert self.comm.recv(0) == "ACK"
+        updated_model_params = self.serialize_model()
+        true_gradients = (global_model - updated_model_params) / param.LEARNING_RATE
 
-        
+        return true_gradients
+
+    def generate_clip_gradients(self, global_model, gradient_list, rn):
+        good_gradient_stack = torch.stack(gradient_list)
+        mean = torch.mean(good_gradient_stack, dim = 0)
+        self.unserialize_model(global_model - param.LEARNING_RATE * mean)
+        sorted_vals, _ = torch.sort(good_gradient_stack, dim=0)  # shape: [num_clients, num_params]
+        beta = param.TRIMMED_MEAN_BETA
+        select = sorted_vals[int(beta * param.ADVERSARY_SCALE):-int(beta * param.ADVERSARY_SCALE)]
+        clip_mini, clip_maxi = select.min(dim=0).values, select.max(dim=0).values
+        # 训练 self.model，使其沿 loss 取反方向优化
+        for i in tqdm(range(param.ADVERSARY_ITERATION), desc="client {} round {} adversarial training : ".format(self.id, rn)):
+            for data, target in self.train_loader:
+                data, target = data.to(DEVICE), target.to(DEVICE)
+
+                self.optimizer.zero_grad()
+                output = self.model(data)
+
+                # 计算 loss（取反方向优化）
+                loss = -self.criterion(output, target)
+                loss.backward()
+                torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=10.0)
+                self.optimizer.step()
+            theta = self.serialize_model()
+            gradient = (global_model - theta) / param.LEARNING_RATE
+            gradient_clip = torch.clamp(gradient, min=clip_mini, max=clip_maxi)
+            self.unserialize_model(global_model - param.LEARNING_RATE * gradient_clip)
+
+        updated_model_params = self.serialize_model()
+        true_gradients = (global_model - updated_model_params) / param.LEARNING_RATE
+        return true_gradients
+
     def evaluate(self):
         """
             Train the model on all rounds.
         """
         self.comm.initialize()
         for rn in range(self.round):
-            if self.chose():
-                if self.id in param.BAD_CLIENTS :
-                    if self.id in param.TAPPING_CLIENTS:
-                        global_model, weight_range = self.receive_global_model_range()
-                        good_params = self.receive_other_parameters()
-                        max_allow_diff_dim = self.get_min_diff(weight_range, good_params, rn, k=1)
-                        adv_param = self.generate_bad_param_selective(global_model, weight_range, good_params, rn, 
-                                                                      topk=int(param.ADVERSARY_SCALE * max_allow_diff_dim))
-                        self.send_weights(adv_param)
-                    else :
-                        weight_range = self.train()
-                        global_model = self.handle_weights(weight_range, param.EPS)
-                        self.send_weights(global_model)
-                else :
-                    weight_range = self.train()
-                    global_model = self.handle_weights(weight_range, param.EPS)
-                    self.send_weights(global_model)
-                    
-                
+            if self.id in param.TAPPING_CLIENTS :
+                global_model = self.receive_global_model()
+                good_gradients = self.receive_other_parameter()
+                if param.MKRUM:
+                    #bad_gradient = self.generate_fit_gradients(global_model, good_gradients, rn)
+                    bad_gradient = self.generate_normed_gradients(global_model, good_gradients, rn)
+                elif param.TRIMMED_MEAN:
+                    bad_gradient = self.generate_clip_gradients(global_model, good_gradients, rn)
+                else:
+                    assert(0)
+                logging.debug("Client {} bad model parameter shape : {}, other model parameter shape : {}".format(self.id, bad_gradient.shape, good_gradients[0].shape))
+                self.send2server(bad_gradient)
+            else :
+                res = self.train(rn)
+                self.send2server(res)
