@@ -19,19 +19,28 @@ def get_dataset(dataset: str):
         train_dataset = datasets.CIFAR10(DEFAULT_DATASET_PATH, train=True, download=True, transform=transforms.Compose([
                         transforms.RandomCrop(32, padding=4),
                         transforms.RandomHorizontalFlip(),
-                        transforms.RandomVerticalFlip(),                                
+                        #transforms.RandomVerticalFlip(),                                
                         transforms.ToTensor(),
-                        transforms.Normalize(mean=[0.485, 0.456, 0.406],
-                                                    std=[0.229, 0.224, 0.225])
+                        transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010))
                     ]))
         test_dataset = datasets.CIFAR10(DEFAULT_DATASET_PATH, train=False, download=True, transform=transforms.Compose([                               
                         transforms.ToTensor(),
-                        transforms.Normalize(mean=[0.485, 0.456, 0.406],
-                                                    std=[0.229, 0.224, 0.225])
+                        transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010))
                     ]))
     elif dataset == "CIFAR100":
         train_dataset = datasets.CIFAR100(DEFAULT_DATASET_PATH, train=True, download=True)
         test_dataset = datasets.CIFAR100(DEFAULT_DATASET_PATH, train=False, download=True)
+    elif dataset == "FashionMNIST":
+        train_dataset = datasets.FashionMNIST(DEFAULT_DATASET_PATH, train=True, download=True, transform = transforms.Compose([
+                        #transforms.RandomHorizontalFlip(),  # 随机水平翻转
+                        #transforms.RandomRotation(10),       # 随机旋转±10度
+                        transforms.ToTensor(),                # 转换为张量
+                        transforms.Normalize(mean=(0.1307,), std=(0.3081,))  # 标准化
+                    ]))
+        test_dataset = datasets.FashionMNIST(DEFAULT_DATASET_PATH, train=False, download=True, transform = transforms.Compose([
+                        transforms.ToTensor(),                # 转换为张量
+                        transforms.Normalize(mean=(0.1307,), std=(0.3081,))  # 标准化
+                    ]))
     else:
         raise ValueError("Unknown dataset: {}".format(dataset))
     

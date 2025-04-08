@@ -1,3 +1,4 @@
+import model.ResNet_model
 import torch.nn as nn
 from torch import optim
 import torch.nn.functional as F
@@ -6,6 +7,7 @@ import model.MLP_model
 import model.ConvNet_model
 import model.VGG_model
 import model.LR_model
+import torchvision.models as models
 
 from param import DEVICE
 
@@ -15,6 +17,8 @@ MLP_with_Conf = model.MLP_model.MLP_with_Conf
 ConvNet = model.ConvNet_model.ConvNet
 VGG_Mini = model.VGG_model.VGG_Mini
 VGG16 = model.VGG_model.VGG16
+ResNet = model.ResNet_model.ResNet
+
 
 def load_model(Model: str, Param: dict):
     if Model == "None":
@@ -31,6 +35,8 @@ def load_model(Model: str, Param: dict):
         return VGG_Mini(Param["output_size"], Param["channel"]).to(DEVICE)
     elif Model == "MLP_with_Conf":
         return MLP_with_Conf(Param["input_size"], Param["output_size"]).to(DEVICE)
+    elif Model == "ResNet-18":
+        return ResNet(model.ResNet_model.BasicBlock, [2, 2, 2, 2], Param["output_size"], Param["channel"]).to(DEVICE)
     else:
         raise ValueError("Unknown model type: \"{}\"".format(Model))
 
@@ -69,5 +75,7 @@ def load_optimizer(Optimizer: str, model_param, learning_rate: float):
         return optim.Adam(model_param, lr=learning_rate)
     elif Optimizer == "SGD":
         return optim.SGD(model_param, lr=learning_rate)
+    elif Optimizer == "SGD-momentum":
+        return optim.SGD(model_param, lr=learning_rate, momentum=0.9, weight_decay=5e-4)
     else:
         raise ValueError("Unknown optimizer type: \"{}\"".format(Optimizer))

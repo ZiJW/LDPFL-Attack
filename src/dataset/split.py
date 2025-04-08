@@ -149,8 +149,8 @@ def split_public_train_test_iid(NAME: str, N_clients: int, folder_name: str):
 
 if __name__ == "__main__":
     # split_train_test_non_iid("MNIST", "non_iid_5_p=0.9")
-    #split_public_train_test_iid("MNIST", 20, "iid_20_with_public")
-    #split_train_test_iid("CIFAR100", 10, "iid_10")
-    split_train_test_iid("MNIST", 5, "iid_5")
+    split_public_train_test_iid("CIFAR10", 5, "iid_5_with_public")
+    split_train_test_iid("CIFAR10", 5, "iid_5")
+    #split_train_test_iid("FashionMNIST", 10, "iid_10")
     #split_train_test_iid("adult", 20, "iid_20")
 

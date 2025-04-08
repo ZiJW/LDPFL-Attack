@@ -137,13 +137,13 @@ class DPSGD_server(Base_server):
             for idx in selected_indices:
                 res += param_matrix[idx]
             res = res.div(selected_indices.shape[0])
-            self.unserialize_model(global_model - param.LEARNING_RATE * res)
+            self.unserialize_model(res)
         elif param.TRIMMED_MEAN:
             #res = self.handle_trimmed_mean(param_matrix, param.TRIMMED_MEAN_BETA)
             res, select = self.trimmed_mean_with_selection_stats(param_matrix, param.TRIMMED_MEAN_BETA)
             select = [f"{x:.5f}" for x in select]
             logging.info("Server trimmed mean select ratio : {}".format(select))
-            self.unserialize_model(global_model - param.LEARNING_RATE * res)
+            self.unserialize_model(res)
         else :
             selected_indices = torch.tensor(range(0, self.size - 1))
             logging.info("Server select aggregating clients : {}".format(selected_indices + 1))
@@ -156,7 +156,7 @@ class DPSGD_server(Base_server):
             for idx in selected_indices:
                 res += param_matrix[idx]
             res = res.div(selected_indices.shape[0])
-            self.unserialize_model(global_model - param.LEARNING_RATE * res)
+            self.unserialize_model(res)
 
         logging.debug("Server: round {} end".format(rn))
 

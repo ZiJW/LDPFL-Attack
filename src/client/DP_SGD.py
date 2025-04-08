@@ -101,9 +101,9 @@ class DPSGD_client(Base_client):
             self.unserialize_model(self.serialize_model()-train_set_gradients*param.LEARNING_RATE)
             return_gradients = train_set_gradients
 
-        logging.debug("CLient {} : gradients : {}".format(self.id, return_gradients))
+        #logging.debug("CLient {} : gradients : {}".format(self.id, return_gradients))
         # logging.debug("Client {}: selected_index = {}, max absval = {}".format(self.id, selected_index, torch.max(accum_grad)))
-        return return_gradients
+        return self.serialize_model()
 
     def fit_on(self, loader, model_size, rev = False, transform=False):
         gradients = torch.tensor([0.]*model_size).to(param.DEVICE)
@@ -249,20 +249,19 @@ class DPSGD_client(Base_client):
 
         return gradients
 
-    def generate_normed_gradients(self, global_model, gradient_list, rn):
+    def generate_normed_gradients(self, global_model, param_list, rn):
         """
         训练 self.model 使其沿 loss 取反方向优化 并同时接近中心点  (median ) 
         最终输出相对于 global_model 的梯度
         """
         # 计算几何中位数（gradient_list 中的几何中心点）
-        median = compute_geometric_median(gradient_list).median
-        reference_gradient = min(gradient_list, key=lambda g: torch.norm(g - median))
+        median = compute_geometric_median(param_list).median #中心点
+        reference_param = min(param_list, key=lambda g: torch.norm(g - median, p=2))
         # 允许的偏移范围是最近点到中心点之间的差值*lr，这表示两个对应模型之间的距离
-        C = param.ADVERSARY_SCALE * torch.norm(param.LEARNING_RATE * (reference_gradient - median), p=2) 
+        C = param.ADVERSARY_SCALE * torch.norm(reference_param - median, p=2) 
 
-        self.unserialize_model(global_model - param.LEARNING_RATE * median)
-        theta_target = self.serialize_model()  # 目标中心点
-        logging.debug("Client {} C {} parameter {}".format(self.id, C, theta_target))
+        self.unserialize_model(median)
+        logging.debug("Client {} C {} parameter {}".format(self.id, C, median))
 
         # 训练 self.model，使其沿 loss 取反方向优化
         for i in tqdm(range(param.ADVERSARY_ITERATION), desc="client {} round {} adversarial training : ".format(self.id, rn)):
@@ -278,25 +277,23 @@ class DPSGD_client(Base_client):
                 torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=10.0)
                 self.optimizer.step()
             #norm clip
-            theta = self.serialize_model()
-            logging.debug("Client {} round {}.{} parameter {}".format(self.id, rn, i, theta))
-            diff = theta - theta_target
+            theta_adv = self.serialize_model()
+            logging.debug("Client {} round {}.{} parameter {}".format(self.id, rn, i, theta_adv))
+            diff = theta_adv - median
             rate = max(1.0, torch.norm(diff, p=2) / (C))
-            clipped_theta = theta_target + diff / rate
+            clipped_theta = diff / rate + median
             self.unserialize_model(clipped_theta)
             logging.debug("Client {} round {}.{} rate {} parameter {}".format(self.id, rn, i, rate, clipped_theta))
 
 
-        updated_model_params = self.serialize_model()
-        true_gradients = (global_model - updated_model_params) / param.LEARNING_RATE
+        theta_fit_adv = self.serialize_model()
+        return theta_fit_adv
 
-        return true_gradients
-
-    def generate_clip_gradients(self, global_model, gradient_list, rn):
-        good_gradient_stack = torch.stack(gradient_list)
-        mean = torch.mean(good_gradient_stack, dim = 0)
-        self.unserialize_model(global_model - param.LEARNING_RATE * mean)
-        sorted_vals, _ = torch.sort(good_gradient_stack, dim=0)  # shape: [num_clients, num_params]
+    def generate_clip_gradients(self, global_model, param_list, rn):
+        good_param_stack = torch.stack(param_list)
+        mean = torch.mean(good_param_stack, dim = 0)
+        self.unserialize_model(mean)
+        sorted_vals, _ = torch.sort(good_param_stack, dim=0)  # shape: [num_clients, num_params]
         beta = param.TRIMMED_MEAN_BETA
         select = sorted_vals[int(beta * param.ADVERSARY_SCALE):-int(beta * param.ADVERSARY_SCALE)]
         clip_mini, clip_maxi = select.min(dim=0).values, select.max(dim=0).values
@@ -313,14 +310,12 @@ class DPSGD_client(Base_client):
                 loss.backward()
                 torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=10.0)
                 self.optimizer.step()
-            theta = self.serialize_model()
-            gradient = (global_model - theta) / param.LEARNING_RATE
-            gradient_clip = torch.clamp(gradient, min=clip_mini, max=clip_maxi)
-            self.unserialize_model(global_model - param.LEARNING_RATE * gradient_clip)
+            theta_adv = self.serialize_model()
+            theta_fit_adv = torch.clamp(theta_adv, min=clip_mini, max=clip_maxi)
+            self.unserialize_model(theta_fit_adv)
 
-        updated_model_params = self.serialize_model()
-        true_gradients = (global_model - updated_model_params) / param.LEARNING_RATE
-        return true_gradients
+        theta_fit_adv = self.serialize_model()
+        return theta_fit_adv
 
     def evaluate(self):
         """

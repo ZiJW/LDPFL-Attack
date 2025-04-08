@@ -93,7 +93,7 @@ class VGG16(nn.Module):
         
         # 全连接层
         self.fc = nn.Sequential(
-            nn.Linear(in_features=512*7*7, out_features=4096),
+            nn.Linear(in_features=512 * 1 * 1, out_features=4096),
             nn.ReLU(inplace=True),
             nn.Dropout(),
             nn.Linear(in_features=4096, out_features=4096),

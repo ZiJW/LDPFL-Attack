@@ -23,15 +23,16 @@ LOG_NAME = strftime("%Y-%m-%d_%H-%M/", localtime())
 
 COMM = "fake_socket"
 IP_ADDRESS = "127.0.0.1"
-IP_PORT = "11416"
+IP_PORT = "11417"
 
 BUFFER_SIZE = 8192
 DIST_BACKEND = "gloo"
 
 #   Training hyper parameters
 # DATASET = "adult"
-# FOLDER = "iid_30"
 DATASET = "MNIST"
+#DATASET = "CIFAR10"
+#FOLDER = "iid_5"
 FOLDER = "dirichlet_20users_a900_seed98_public0.05"
 
 MODEL = "VGG_Mini"
@@ -40,23 +41,23 @@ MODEL_PARAM = {"input_size":784, "output_size": 10, "channel": 1}
 # MODEL = "MLP"
 # MODEL_PARAM = {"input_size":13, "output_size": 2, "channel": 1}
 
+# FL Settings
 N_NODES = 21
+FL_RULE = "Test"
+N_ROUND = 100
 N_EPOCH = 1
+KAP = [N_NODES - 1] * N_ROUND
 
 CRITERION = "CrossEntropy"
 OPTIMIZER = "SGD"
 BATCH_SIZE_TRAIN = 32
 BATCH_SIZE_TEST = 1000
 LEARNING_RATE = 0.03
-
-# FL Settings
-FL_RULE = "DPSGD"
-N_ROUND = 100
-KAP = [N_NODES - 1] * N_ROUND
+#LEARNING_RATE_LIST = [0.2] * 100 + [0.04] * 60 + [0.004] * 30
 
 # LDP Settings
 LDP = True
-EPS = 0.72
+EPS = 4.0
 LATENCY_T = 10
 CLIENTS_WEIGHTS = [0] + [2] + [2] * (N_NODES - 2)
 
@@ -65,7 +66,7 @@ CLIPSIZE = 2.0
 
 # DPSGD
 USE_TRANSFORM = False
-NORM_BOUND = 5.0
+NORM_BOUND = 10.0
 SIGMA = 90.0
 
 # Multi-Krum
