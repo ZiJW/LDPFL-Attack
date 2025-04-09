@@ -37,7 +37,7 @@ class Base_client(ABC):
 
     def serialize_model(self, type="concat") -> torch.Tensor:
         res = []
-        for val in self.model.state_dict().values():
+        for val in self.model.parameters():
             res.append(val.view(-1))
         if type == "concat":
             res = torch.cat(res)
@@ -51,10 +51,11 @@ class Base_client(ABC):
         current_index = 0
         if model is None:
             model = self.model
-        for val in model.state_dict().values():
-            sz = val.numel()
-            val.copy_(parameters[current_index: current_index + sz].view(val.shape))
-            current_index += sz
+        with torch.no_grad():
+            for val in model.parameters():
+                sz = val.numel()
+                val.copy_(parameters[current_index: current_index + sz].view(val.shape))
+                current_index += sz
 
     @abstractmethod
     def train(self):

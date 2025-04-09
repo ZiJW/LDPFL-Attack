@@ -43,7 +43,7 @@ class Base_server(ABC):
 
     def serialize_model(self, type="concat") -> torch.Tensor:
         res = []
-        for val in self.model.state_dict().values():
+        for val in self.model.parameters():
             res.append(val.view(-1))
         if type == "concat":
             res = torch.cat(res)
@@ -55,17 +55,19 @@ class Base_server(ABC):
     
     def unserialize_model(self, parameters: torch.Tensor):
         current_index = 0
-        for val in self.model.state_dict().values():
-            sz = val.numel()
-            val.copy_(parameters[current_index: current_index + sz].view(val.shape))
-            current_index += sz
+        with torch.no_grad():
+            for val in self.model.parameters():
+                sz = val.numel()
+                val.copy_(parameters[current_index: current_index + sz].view(val.shape))
+                current_index += sz
 
     def unserialize_temp_model(self, parameters: torch.Tensor):
         current_index = 0
-        for val in self.temp_model.state_dict().values():
-            sz = val.numel()
-            val.copy_(parameters[current_index: current_index + sz].view(val.shape))
-            current_index += sz
+        with torch.no_grad():
+            for val in self.temp_model.parameters():
+                sz = val.numel()
+                val.copy_(parameters[current_index: current_index + sz].view(val.shape))
+                current_index += sz
 
     def test(self, ep: int = -1):
         """
@@ -177,7 +179,7 @@ class Base_server(ABC):
         return selected_indices
 
     def visualize_parameter(self, param_matrix, cap_name, save_path, mode="PCA", red_list=[], blue_list=[]):
-        param_matrix_ = torch.stack(param_matrix).cpu().numpy()
+        param_matrix_ = torch.stack(param_matrix).cpu().detach().numpy()
         n = param_matrix_.shape[0]  # 获取模型数量
 
         # 生成颜色数组，默认所有点是灰色

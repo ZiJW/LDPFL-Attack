@@ -12,6 +12,7 @@ import torch.optim as optim
 import torch.nn.functional as F
 import torch.nn as nn
 from model.ResNet_model import ResNet18
+from torch.utils.data import TensorDataset, DataLoader
 import math
 
 class FedAvg_client(Base_client):
@@ -24,14 +25,9 @@ class FedAvg_client(Base_client):
                          param.OPTIMIZER, param.LEARNING_RATE, param.CRITERION, comm=param.COMM)
         
         # Data
-        transform_train = transforms.Compose([
+        """transform_train = transforms.Compose([
             transforms.RandomCrop(32, padding=4),
             transforms.RandomHorizontalFlip(),
-            transforms.ToTensor(),
-            transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
-        ])
-
-        transform_test = transforms.Compose([
             transforms.ToTensor(),
             transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
         ])
@@ -45,12 +41,18 @@ class FedAvg_client(Base_client):
             torch.utils.data.Subset(trainset, indice), batch_size=128, shuffle=True, num_workers=2)
         logging.debug("Client {} get {} data in CIFAR10".format(self.id, range((self.id - 1) * each_size, self.id * each_size)))
 
+        transform_test = transforms.Compose([
+            transforms.ToTensor(),
+            transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
+        ])
+
         testset = torchvision.datasets.CIFAR10(
             root='./dataset', train=False, download=True, transform=transform_test)
         self.test_loader = torch.utils.data.DataLoader(
-            testset, batch_size=1000, shuffle=False, num_workers=2)
-        #self.train_loader = load_dataset(param.DATASET, param.FOLDER, [("train", True)], idx=self.id)[0]
-        #self.valid_loader = load_dataset(param.DATASET, param.FOLDER, [("public", False)])[0] if id in param.BAD_CLIENTS else []
+            testset, batch_size=1000, shuffle=False, num_workers=2)"""
+
+        self.train_loader = load_dataset(param.DATASET, param.FOLDER, [("train", True)], idx=self.id)[0]
+        self.valid_loader = load_dataset(param.DATASET, param.FOLDER, [("public", False)])[0] if id in param.BAD_CLIENTS else []
         
         #self.mdoel = ResNet18().to(param.DEVICE)
         #self.criterion = nn.CrossEntropyLoss()

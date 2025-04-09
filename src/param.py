@@ -30,12 +30,13 @@ DIST_BACKEND = "gloo"
 
 #   Training hyper parameters
 # DATASET = "adult"
-DATASET = "MNIST"
+DATASET = "FashionMNIST"
 #DATASET = "CIFAR10"
-#FOLDER = "iid_5"
-FOLDER = "dirichlet_20users_a900_seed98_public0.05"
+FOLDER = "iid_20_with_public"
+#FOLDER = "dirichlet_20users_a900_seed98_public0.05"
+DATA_AGUMENT = (DATASET == "CIFAR10") 
 
-MODEL = "VGG_Mini"
+MODEL = "ResNet-18"
 MODEL_PARAM = {"input_size":784, "output_size": 10, "channel": 1}
 
 # MODEL = "MLP"
@@ -43,17 +44,17 @@ MODEL_PARAM = {"input_size":784, "output_size": 10, "channel": 1}
 
 # FL Settings
 N_NODES = 21
-FL_RULE = "Test"
-N_ROUND = 100
+FL_RULE = "DPSGD"
+N_ROUND = 50
 N_EPOCH = 1
 KAP = [N_NODES - 1] * N_ROUND
 
 CRITERION = "CrossEntropy"
 OPTIMIZER = "SGD"
-BATCH_SIZE_TRAIN = 32
+BATCH_SIZE_TRAIN = 64
 BATCH_SIZE_TEST = 1000
-LEARNING_RATE = 0.03
-#LEARNING_RATE_LIST = [0.2] * 100 + [0.04] * 60 + [0.004] * 30
+LEARNING_RATE = 0.01
+LEARNING_RATE_LIST = [0.01] * N_ROUND
 
 # LDP Settings
 LDP = True
@@ -67,10 +68,10 @@ CLIPSIZE = 2.0
 # DPSGD
 USE_TRANSFORM = False
 NORM_BOUND = 10.0
-SIGMA = 90.0
+SIGMA = 0.0
 
 # Multi-Krum
-MKRUM = True
+MKRUM = False
 BROKEN_CLIENTS = []  #broken clients, used for test whether krum work or not
 MAX_FAILURE = 8
 KRUM_SELECTED = 10
@@ -81,7 +82,7 @@ TRIMMED_MEAN = False
 TRIMMED_MEAN_BETA = int((N_NODES - 1) / 4)
 
 # Attack Settings
-BAD_CLIENTS = [1, 2]
+BAD_CLIENTS = []
 ADVERSARY_ITERATION = 10
 ADVERSARY_SCALE = 1.0
 TAPPING_CLIENTS = BAD_CLIENTS

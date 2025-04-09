@@ -3,6 +3,7 @@ import pickle
 import torch
 from torch.utils.data import DataLoader
 from torch.utils.data import Dataset
+import torchvision.transforms as transforms
 import random
 import os
 import math
@@ -11,16 +12,25 @@ import param
 from param import DEVICE
 
 class base_dataset(Dataset):
-    def __init__(self, x, y):
+    def __init__(self, x, y, augment):
         super().__init__()
         self.x = x
         self.y = y
+        self.augment = augment
+        self.augment_transform = transforms.Compose([
+            transforms.RandomCrop(32, padding=4),
+            transforms.RandomHorizontalFlip(),
+        ])
 
     def __len__(self):
         return len(self.y)
     
     def __getitem__(self, index):
-        return self.x[index], self.y[index]
+        x, y = self.x[index], self.y[index]
+        if self.augment:
+            x = self.augment_transform(x)
+        return x, y
+
 
 # ---------------------- set random seed --------------------
 
@@ -50,7 +60,7 @@ def _load(dataset: str, folder: str, name: str):
     elif os.path.exists(Name + "_samples.npy") and os.path.exists(Name + "_labels.npy"):
         samples = torch.from_numpy(np.load("./dataset/{}/{}/{}_samples.npy".format(dataset, folder, name)))
         labels  = torch.from_numpy(np.load("./dataset/{}/{}/{}_labels.npy".format(dataset, folder, name)))
-        dataset = base_dataset(samples, labels)
+        dataset = base_dataset(samples, labels, param.DATA_AGUMENT)
     else:
         raise ValueError("Unknown dataset format! - {}".format(Name))
 
