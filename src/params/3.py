@@ -23,41 +23,43 @@ LOG_NAME = strftime("%Y-%m-%d_%H-%M/", localtime())
 
 COMM = "fake_socket"
 IP_ADDRESS = "127.0.0.1"
-IP_PORT = "11417"
+IP_PORT = "11418"
 
 BUFFER_SIZE = 8192
 DIST_BACKEND = "gloo"
 
 #   Training hyper parameters
 # DATASET = "adult"
-# FOLDER = "iid_30"
-DATASET = "MNIST"
-FOLDER = "dirichlet_20users_a1000000.0_seed98_public0.05"
-#FOLDER = "iid_20_with_public"
+#DATASET = "MNIST"
+#DATASET = "FashionMNIST"
+DATASET = "CIFAR10"
+#FOLDER = "iid_10_with_public"
+FOLDER = "dirichlet_20users_a500_seed98_public0.05"
+DATA_AGUMENT = (DATASET == "CIFAR10")
 
 MODEL = "VGG_Mini"
-MODEL_PARAM = {"input_size":784, "output_size": 10, "channel": 1}
+MODEL_PARAM = {"input_size":1024, "output_size": 10, "channel": 3}
 
 # MODEL = "MLP"
 # MODEL_PARAM = {"input_size":13, "output_size": 2, "channel": 1}
 
+# FL Settings
 N_NODES = 21
-N_EPOCH = 1
+FL_RULE = "DPSGD"
+N_ROUND = 100
+N_EPOCH = 5
+KAP = [N_NODES - 1] * N_ROUND
 
 CRITERION = "CrossEntropy"
 OPTIMIZER = "SGD"
 BATCH_SIZE_TRAIN = 32
-BATCH_SIZE_TEST = 1000
-LEARNING_RATE = 0.03
-
-# FL Settings
-FL_RULE = "Test"
-N_ROUND = 100
-KAP = [N_NODES - 1] * N_ROUND
+BATCH_SIZE_TEST = 100
+LEARNING_RATE = 0.1
+LEARNING_RATE_LIST = [0.1] * N_ROUND
 
 # LDP Settings
 LDP = True
-EPS = 0.72
+EPS = 0.75
 LATENCY_T = 10
 CLIENTS_WEIGHTS = [0] + [2] + [2] * (N_NODES - 2)
 
@@ -66,8 +68,10 @@ CLIPSIZE = 2.0
 
 # DPSGD
 USE_TRANSFORM = False
-NORM_BOUND = 5.0
-SIGMA = 90.0
+NORM_BOUND = 4.0
+SIGMA = 0.5
+DELTA = 1e-4
+P = 0.1
 
 # Multi-Krum
 MKRUM = False
@@ -75,14 +79,17 @@ BROKEN_CLIENTS = []  #broken clients, used for test whether krum work or not
 MAX_FAILURE = 8
 KRUM_SELECTED = 10
 
+
 #Trimmed Mean
-TRIMMED_MEAN = True
+TRIMMED_MEAN = False
 TRIMMED_MEAN_BETA = int((N_NODES - 1) / 4)
 
 # Attack Settings
 BAD_CLIENTS = [1, 2]
-ADVERSARY_ITERATION = 10
-ADVERSARY_SCALE = 1.0
-TAPPING_CLIENTS = BAD_CLIENTS
-#TAPPING_CLIENTS = []
-TAPPING_SAME = False
+#TAPPING_CLIENTS = BAD_CLIENTS
+TAPPING_CLIENTS = []
+ATTACK_MODE = "back-total-loss"
+ADVERSARY_ITERATION = [10] * N_ROUND
+ADVERSARY_SCALE = [1.0] * N_ROUND
+ADVERSARY_NORM = 5.0
+TAPPING_SAME = True

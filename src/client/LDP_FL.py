@@ -76,6 +76,41 @@ class LDPFL_client(Base_client):
                 self.optimizer.step()
         return weight_range
 
+    def fit_one_epoch(self, rev=False):
+        for ep in range(self.epoch):
+            for batch_idx, (data, target) in enumerate(self.train_loader):
+                # Training
+                data, target = data.to(DEVICE), target.to(DEVICE)
+                self.optimizer.zero_grad()
+                output = self.model(data)
+                if rev:
+                    loss = -self.criterion(output, target)
+                else:
+                    loss = self.criterion(output, target)
+                loss.backward()
+                self.optimizer.step()
+        return self.serialize_model()
+
+    def adv_train(self, global_model, weight_range, rn, mode='front'):
+        if mode == 'front':
+            logging.debug("Client {} generating round {} front adversarial parameter".format(self.id, rn))
+            self.unserialize_model(global_model)
+            self.fit_one_epoch(rev=True)
+            return self.handle_weights(weight_range, param.EPS)
+        elif mode == 'back-total-loss':
+            logging.debug("Client {} generating round {} back adversarial parameter with total loss".format(self.id, rn))
+            self.unserialize_model(global_model)
+            estimate_param = self.fit_one_epoch(rev=False)
+            self.unserialize_model(global_model)
+            param_after_agg = self.fit_one_epoch(rev=True)
+            param_adv = ( param_after_agg * (self.size - 1) - estimate_param * (self.size - 1 - len(param.BAD_CLIENTS)) )  / len(param.BAD_CLIENTS)
+            return self.clip_2val(self.flatten2layer(param_adv), weight_range)
+        elif mode == 'back':
+            logging.debug("Client {} generating round {} back adversarial parameter".format(self.id, rn))
+            self.unserialize_model(global_model)
+            param_adv = self.fit_one_epoch(rev=True)
+            return self.clip_2val(self.flatten2layer(param_adv), weight_range)
+
     def receive_global_model_range(self):
         global_model, weight_range = self.comm.recv(0)
         logging.debug("Client {}: get global weights from server".format(self.id))
@@ -137,7 +172,9 @@ class LDPFL_client(Base_client):
     def flatten2layer(self, params):
         current_index = 0
         result = []
-        for val in self.model.state_dict().values():
+        model_keys = [name for name, _ in self.model.named_parameters()]
+        for name in model_keys:
+            val = self.model.state_dict()[name]
             sz = val.numel()
             result.append(params[current_index: current_index + sz].view(-1))
             current_index += sz
@@ -415,12 +452,12 @@ class LDPFL_client(Base_client):
                         good_params = self.receive_other_parameters()
                         max_allow_diff_dim = self.get_min_diff(weight_range, good_params, rn, k=1)
                         adv_param = self.generate_bad_param_selective(global_model, weight_range, good_params, rn, 
-                                                                      topk=int(param.ADVERSARY_SCALE * max_allow_diff_dim))
+                                                                      topk=int(param.ADVERSARY_SCALE[rn] * max_allow_diff_dim))
                         self.send_weights(adv_param)
                     else :
-                        weight_range = self.train()
-                        global_model = self.handle_weights(weight_range, param.EPS)
-                        self.send_weights(global_model)
+                        global_model, weight_range = self.receive_global_model_range()
+                        adv_param = self.adv_train(global_model, weight_range, rn, mode=param.ATTACK_MODE)
+                        self.send_weights(adv_param)
                 else :
                     weight_range = self.train()
                     global_model = self.handle_weights(weight_range, param.EPS)

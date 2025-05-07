@@ -31,7 +31,8 @@ class LDPFL_server(Base_server):
 
         self.model_size = []
         sd = self.model.state_dict()
-        for x in sd:
+        model_keys = [name for name, _ in self.model.named_parameters()]
+        for x in model_keys:
             self.model_size.append(sd[x].numel())
         logging.info("Server : model shape : {}".format(self.model_size))
 

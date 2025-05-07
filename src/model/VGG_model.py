@@ -1,8 +1,10 @@
 import torch.nn as nn
 import torch.nn.functional as F
+import torch
+import math
 
 class VGG_Mini(nn.Module):
-    def __init__(self, num_classes=10, channel=3):
+    def __init__(self, input_size = 784, num_classes=10, channel=1):
         super(VGG_Mini, self).__init__()
         # 第一段卷积层
         self.conv1 = nn.Sequential(
@@ -22,12 +24,19 @@ class VGG_Mini(nn.Module):
             nn.MaxPool2d(kernel_size=2, stride=2)
         )
         
+         # 用一个虚拟输入推理 flatten 大小
+        with torch.no_grad():
+            length = int(math.sqrt(input_size))
+            dummy = torch.zeros(1, channel, length, length)
+            out = self.conv2(self.conv1(dummy))
+            self.flatten_size = out.view(1, -1).size(1)
+
         # 全连接层
         self.fc = nn.Sequential(
-            nn.Linear(in_features=128*7*7, out_features=256),
+            nn.Linear(self.flatten_size, 256),
             nn.ReLU(inplace=True),
             nn.Dropout(),
-            nn.Linear(in_features=256, out_features=num_classes)
+            nn.Linear(256, num_classes)
         )
         
     def forward(self, x):

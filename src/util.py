@@ -64,7 +64,7 @@ def _load(dataset: str, folder: str, name: str):
     else:
         raise ValueError("Unknown dataset format! - {}".format(Name))
 
-    loader = DataLoader(dataset, batch_size=param.BATCH_SIZE_TRAIN, shuffle=True)
+    loader = DataLoader(dataset, batch_size=param.BATCH_SIZE_TRAIN if name not in ['test', 'public'] else param.BATCH_SIZE_TEST, shuffle=True)
     return loader
 
 # ---------------------- Functions ----------------------

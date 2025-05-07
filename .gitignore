@@ -8,8 +8,10 @@ src/dataset/adult/
 src/dataset/MNIST/
 src/dataset/CIFAR10/
 src/dataset/cifar-10-batches-py/
+src/dataset/FashionMNIST/
 src/log/
 log/
 log_chy/
 log_krum/
 log_res/
+log_other/

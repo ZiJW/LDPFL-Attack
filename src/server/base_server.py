@@ -41,33 +41,50 @@ class Base_server(ABC):
         self.model = load_model(Model, Model_param)
         self.temp_model = load_model(Model, Model_param)
 
-    def serialize_model(self, type="concat") -> torch.Tensor:
-        res = []
-        for val in self.model.parameters():
-            res.append(val.view(-1))
-        if type == "concat":
-            res = torch.cat(res)
-        elif type == "raw":
-            pass
-        else:
-            raise ValueError("Invalid serialize type: {}".format(type))
-        return res
-    
-    def unserialize_model(self, parameters: torch.Tensor):
-        current_index = 0
+    def serialize_model_names(self, model_keys=None, type="concat"):
         with torch.no_grad():
-            for val in self.model.parameters():
+            res = []
+            if model_keys == None:
+                model_keys = self.model.state_dict().keys()
+            for name in model_keys:
+                val = self.model.state_dict()[name]
+                res.append(val.view(-1))
+            if type == "concat":
+                res = torch.cat(res)
+            elif type == "raw":
+                pass
+            else:
+                raise ValueError("Invalid serialize type: {}".format(type))
+        return res
+
+    def unserialize_model_names(self, parameters, model=None, model_keys=None):
+        with torch.no_grad():
+            current_index = 0
+            if model_keys == None:
+                model_keys = model.state_dict().keys()
+            if model == None:
+                model = self.model
+            for name in model_keys:
+                val = model.state_dict()[name]
                 sz = val.numel()
                 val.copy_(parameters[current_index: current_index + sz].view(val.shape))
                 current_index += sz
 
+
+
+    def serialize_model(self, type="concat") -> torch.Tensor:
+        model_keys = [name for name, _ in self.model.named_parameters()]
+        return self.serialize_model_names(model_keys=model_keys, type=type)
+
+    def unserialize_model(self, parameters: torch.Tensor, model=None):
+        if model == None:
+            model = self.model
+        model_keys = [name for name, _ in model.named_parameters()]
+        self.unserialize_model_names(parameters, model=model, model_keys=model_keys)
+
     def unserialize_temp_model(self, parameters: torch.Tensor):
-        current_index = 0
-        with torch.no_grad():
-            for val in self.temp_model.parameters():
-                sz = val.numel()
-                val.copy_(parameters[current_index: current_index + sz].view(val.shape))
-                current_index += sz
+        model_keys = [name for name, _ in self.temp_model.named_parameters()]
+        self.unserialize_model_names(parameters, model=self.temp_model, model_keys=model_keys)
 
     def test(self, ep: int = -1):
         """
@@ -199,7 +216,7 @@ class Base_server(ABC):
             plt.ylabel("PCA Component 2")
             plt.title(cap_name)
             plt.savefig(save_path)
-            plt.show()
+            plt.close()
 
         elif mode == "t-SNE":
             pca_50 = PCA(n_components=15)
@@ -212,7 +229,7 @@ class Base_server(ABC):
             plt.ylabel("t-SNE Component 2")
             plt.title(cap_name)
             plt.savefig(save_path)
-            plt.show()
+            plt.close()
         elif mode == "MDS" :
             def format_distance(value):
                 """格式化距离矩阵中的数值，默认保留 4 位小数，过大或过小时使用科学计数法"""
@@ -249,7 +266,7 @@ class Base_server(ABC):
             plt.ylabel("MDS Component 2")
             plt.title(cap_name)
             plt.savefig(save_path)
-            plt.show()
+            plt.close()
         else:
             raise NotImplementedError
 

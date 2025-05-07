@@ -18,6 +18,7 @@ ConvNet = model.ConvNet_model.ConvNet
 VGG_Mini = model.VGG_model.VGG_Mini
 VGG16 = model.VGG_model.VGG16
 ResNet = model.ResNet_model.ResNet
+ResNet_GN = model.ResNet_model.ResNet_GN
 
 
 def load_model(Model: str, Param: dict):
@@ -32,11 +33,13 @@ def load_model(Model: str, Param: dict):
     elif Model == "VGG16":
         return VGG16(Param["output_size"], Param["channel"]).to(DEVICE)
     elif Model == "VGG_Mini":
-        return VGG_Mini(Param["output_size"], Param["channel"]).to(DEVICE)
+        return VGG_Mini(Param["input_size"], Param["output_size"], Param["channel"]).to(DEVICE)
     elif Model == "MLP_with_Conf":
         return MLP_with_Conf(Param["input_size"], Param["output_size"]).to(DEVICE)
     elif Model == "ResNet-18":
         return ResNet(model.ResNet_model.BasicBlock, [2, 2, 2, 2], Param["output_size"], Param["channel"]).to(DEVICE)
+    elif Model == "ResNet_GN-18":
+        return ResNet_GN(model.ResNet_model.BasicBlock_GN, [2, 2, 2, 2], Param["output_size"], Param["channel"]).to(DEVICE)
     else:
         raise ValueError("Unknown model type: \"{}\"".format(Model))
 

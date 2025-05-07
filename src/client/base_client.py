@@ -35,31 +35,44 @@ class Base_client(ABC):
         for x in sd:
             self.model_size.append(sd[x].numel())
 
-    def serialize_model(self, type="concat") -> torch.Tensor:
-        res = []
-        for val in self.model.parameters():
-            res.append(val.view(-1))
-        if type == "concat":
-            res = torch.cat(res)
-        elif type == "raw":
-            pass
-        else:
-            raise ValueError("Invalid serialize type: {}".format(type))
+    def serialize_model_names(self, model_keys=None, type="concat"):
+        with torch.no_grad():
+            res = []
+            if model_keys == None:
+                model_keys = self.model.state_dict().keys()
+            for name in model_keys:
+                val = self.model.state_dict()[name]
+                res.append(val.view(-1))
+            if type == "concat":
+                res = torch.cat(res)
+            elif type == "raw":
+                pass
+            else:
+                raise ValueError("Invalid serialize type: {}".format(type))
         return res
 
-    def unserialize_model(self, parameters: torch.Tensor, model=None):
-        current_index = 0
-        if model is None:
-            model = self.model
+    def unserialize_model_names(self, parameters, model=None, model_keys=None):
         with torch.no_grad():
-            for val in model.parameters():
+            current_index = 0
+            if model_keys == None:
+                model_keys = model.state_dict().keys()
+            if model == None:
+                model = self.model
+            for name in model_keys:
+                val = model.state_dict()[name]
                 sz = val.numel()
                 val.copy_(parameters[current_index: current_index + sz].view(val.shape))
                 current_index += sz
 
-    @abstractmethod
-    def train(self):
-        pass
+    def serialize_model(self, type="concat") -> torch.Tensor:
+        model_keys = [name for name, _ in self.model.named_parameters()]
+        return self.serialize_model_names(model_keys=model_keys, type=type)
+
+    def unserialize_model(self, parameters: torch.Tensor, model=None):
+        if model == None:
+            model = self.model
+        model_keys = [name for name, _ in model.named_parameters()]
+        self.unserialize_model_names(parameters, model=model, model_keys=model_keys)
 
     def test(self, ep):
         """
@@ -85,13 +98,8 @@ class Base_client(ABC):
         Loss = Loss / len(self.test_loader)
         print('(Client {}) Epoch: {} Acc = {:.3f}, Loss: {:.9f}'.format(self.id, ep, Acc, Loss))
 
-    def GaussianNoise(self, epsilon, C, delta, shape):
-        std = math.sqrt(2 * math.log(1.25/delta)) * C / epsilon
-        gaussianNoise = torch.normal(0, std, shape, device=DEVICE)
-        return gaussianNoise
-    
-    def GaussianNoise(self, sigma, sensitivity, shape):
-        gaussianNoise = torch.normal(0, sigma * sensitivity, shape, device=param.DEVICE)
+    def GaussianNoise(self, sigma, shape):
+        gaussianNoise = torch.normal(0, sigma, shape, device=param.DEVICE)
         return gaussianNoise
     
     @abstractmethod

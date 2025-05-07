@@ -238,6 +238,11 @@ if __name__ == "__main__":
         TRANSFORM_TEST = transforms.ToTensor()
         LABEL_NUM = 10
         LABEL_NUM_PER_USER = 2
+    elif NAME == "FashionMNIST":
+        TRANSFORM_TRAIN = transforms.ToTensor()
+        TRANSFORM_TEST = transforms.ToTensor()
+        LABEL_NUM = 10
+        LABEL_NUM_PER_USER = 2
     elif NAME == "CIFAR10":
         #TRANSFORM_TRAIN = transform_CIFAR10_train
         #TRANSFORM_TEST = transform_CIFAR10_test
