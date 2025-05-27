@@ -12,6 +12,7 @@ src/dataset/MNIST/
 src/dataset/CIFAR10/
 src/dataset/cifar-10-batches-py/
 src/dataset/FashionMNIST/
+src/dataset/cifar-10-python.tar.gz
 src/log/
 log/
 log_chy/
