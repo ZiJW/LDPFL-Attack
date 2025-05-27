@@ -4,12 +4,14 @@ src/client/__pycache__
 src/dataset/__pycache__
 src/model/__pycache__
 src/network/__pycache__
+src/result/__pycache__
+src/result/figure
+src/dataset/__pycache__
 src/dataset/adult/
 src/dataset/MNIST/
 src/dataset/CIFAR10/
 src/dataset/cifar-10-batches-py/
 src/dataset/FashionMNIST/
-src/result/figure/
 src/log/
 log/
 log_chy/

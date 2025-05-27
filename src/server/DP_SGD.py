@@ -76,9 +76,10 @@ class DPSGD_server(Base_server):
             record_param = []
             for _ in range(len(chose)):
                 idx, val = self.weights_buffer.get()
-                self.unserialize_temp_model(global_model - param.LEARNING_RATE * val)
-                acc, loss = self.test_on_public(self.temp_model)
-                logging.info('(Server) round {}: model from client {} Acc = {:.3f}, Loss: {:.9f}'.format(rn, idx, acc, loss))
+                #self.unserialize_temp_model(global_model - param.LEARNING_RATE * val)
+                #acc, loss = self.test_on_public(self.temp_model)
+                #logging.info('(Server) round {}: model from client {} Acc = {:.3f}, Loss: {:.9f}'.format(rn, idx, acc, loss))
+                logging.info('(Server) round {}: model from client {}'.format(rn, idx))
                 record_param.append((idx, val))
         else :
             Thr = [threading.Thread(target=DPSGD_server.collect_weights, args=(self, idx)) for idx in chose if idx not in param.TAPPING_CLIENTS]
@@ -90,9 +91,10 @@ class DPSGD_server(Base_server):
             record_param = []
             for _ in range(good_client_num):
                 idx, val = self.weights_buffer.get()
-                self.unserialize_temp_model(global_model - param.LEARNING_RATE * val)
-                acc, loss = self.test_on_public(self.temp_model)
-                logging.info('(Server) round {}: model from client {} Acc = {:.3f}, Loss: {:.9f}'.format(rn, idx, acc, loss))
+                #self.unserialize_temp_model(global_model - param.LEARNING_RATE * val)
+                #acc, loss = self.test_on_public(self.temp_model)
+                #logging.info('(Server) round {}: model from client {} Acc = {:.3f}, Loss: {:.9f}'.format(rn, idx, acc, loss))
+                logging.info('(Server) round {}: model from client {}'.format(rn, idx))
                 record_param.append((idx, val))
             
             if param.COMM == "socket":
@@ -115,22 +117,26 @@ class DPSGD_server(Base_server):
                 tr.join()
             for _ in range(tapping_client_num) :
                 idx, val = self.weights_buffer.get()
-                self.unserialize_temp_model(global_model - param.LEARNING_RATE * val)
-                acc, loss = self.test_on_public(self.temp_model)
-                logging.info('(Server) round {}: model from client {} Acc = {:.3f}, Loss: {:.9f}'.format(rn, idx, acc, loss))
+                #self.unserialize_temp_model(global_model - param.LEARNING_RATE * val)
+                #acc, loss = self.test_on_public(self.temp_model)
+                #logging.info('(Server) round {}: model from client {} Acc = {:.3f}, Loss: {:.9f}'.format(rn, idx, acc, loss))
+                logging.info('(Server) round {}: model from client {}'.format(rn, idx))
                 record_param.append((idx, val))
             logging.debug("Collect all clients' parameter")
 
         param_matrix = [val for idx, val in  sorted(record_param, key=lambda x : x[0])]
-        if param.TAPPING_SAME :
+        if param.TAPPING_SAME and param.TAPPING_CLIENTS != [] :
             for i in param.TAPPING_CLIENTS :
                 param_matrix[i - 1] = param_matrix[param.TAPPING_CLIENTS[0] - 1] # if every tapping client update same parameter, used to reduce krum score
+        elif param.TAPPING_SAME and param.BAD_CLIENTS != [] :
+            for i in param.BAD_CLIENTS :
+                param_matrix[i - 1] = param_matrix[param.BAD_CLIENTS[0] - 1]
         
         if param.MKRUM :
             selected_indices = self.select_multikrum(param_matrix, param.MAX_FAILURE, param.KRUM_SELECTED)
             logging.info("Server multi-krum select aggregating clients : {}".format(selected_indices + 1))
             bad_list_idx = torch.tensor(param.BAD_CLIENTS) - 1
-            self.visualize_parameter(param_matrix, "round {}".format(rn), "{}fig/round{}.png".format(self.log_path, rn), 
+            if rn % 10 == 0 : self.visualize_parameter(param_matrix, "round {}".format(rn), "{}fig/round{}.png".format(self.log_path, rn), 
                                      mode = "MDS", red_list=bad_list_idx.tolist(), blue_list=selected_indices.tolist())
 
             res = torch.tensor([0.]*len(global_model)).to(param.DEVICE)

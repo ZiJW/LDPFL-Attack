@@ -34,7 +34,7 @@ DIST_BACKEND = "gloo"
 DATASET = "MNIST"
 #DATASET = "CIFAR10"
 #FOLDER = "iid_10_with_public"
-FOLDER = "dirichlet_20users_a1.0_seed98_public0.05"
+FOLDER = "dirichlet_20users_a10.0_seed98_public0.05"
 DATA_AGUMENT = (DATASET == "CIFAR10")
 
 MODEL = "VGG_Mini"
@@ -85,7 +85,7 @@ TRIMMED_MEAN = False
 TRIMMED_MEAN_BETA = int((N_NODES - 1) / 4)
 
 # Attack Settings
-BAD_CLIENTS = [1, 2, 3]
+BAD_CLIENTS = [1]
 ADVERSARY_ITERATION = 10
 ADVERSARY_SCALE = [1.0] * N_ROUND
 ADVERSARY_NORM = 10.0

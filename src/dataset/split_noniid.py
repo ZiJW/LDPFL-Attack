@@ -209,7 +209,7 @@ def _split_iid(dataset_name: str, dataset, N_clients: int, folder_name: str = No
 
 SEED = 98
 CLIENTS_NUM = 20
-NAME = "CIFAR10"
+NAME = "FashionMNIST"
 #TYPE = "pathological"
 TYPE = "dirichlet"
 
@@ -218,7 +218,7 @@ PUBLIC = True
 PUBLIC_RATIO = 0.05
 
 # pathological
-ALPHA = 500
+ALPHA = 1
 PROB_LOW = 0.4
 PROB_HIGH = 0.6
 

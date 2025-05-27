@@ -68,7 +68,7 @@ class DPSGD_client(Base_client):
             logging.debug("    Round {} epoch {} select {} / {} samples norm {}".format(rn, epoch, sample_count, self.train_data_size, norm))
             # Gradient descent step
             self.unserialize_model(theta - param.LEARNING_RATE * gradients)
-        logging.debug("Round {} finished training with eps {}".format( rn, self.accountant.get_epsilon(delta=param.DELTA)))
+        if rn == param.N_ROUND - 1 : logging.debug("Round {} finished training with eps {}".format( rn, self.accountant.get_epsilon(delta=param.DELTA)))
         return self.serialize_model()
 
     def fit_opacus(self, global_model, rn):
@@ -156,18 +156,18 @@ class DPSGD_client(Base_client):
         return self.serialize_model()
 
     def generate_bad_gradients(self, global_model, rn, mode='front'):
-        assert mode in {"front", "back", "front-norm-bound", "back-total-loss"}
-        if mode.startswith("front"):
+        assert mode in {"front", "back", "front-total-loss", "back-total-loss", "random-noise"}
+        if mode == "front":
             logging.debug("Client {} generating round {} front adversarial parameter".format(self.id, rn))
             self.unserialize_model(global_model)
-            for i in tqdm(range(param.ADVERSARY_ITERATION[rn]), desc="client {} round {} adversarial training : ".format(self.id, rn)):
+            for i in tqdm(range(param.ADVERSARY_ITERATION), desc="client {} round {} adversarial training : ".format(self.id, rn)):
                 self.fit_one_epoch(rn, i, rev=True, add_noise=True)
             theta = self.serialize_model()
             return theta
         elif mode == "back":
             logging.debug("Client {} generating round {} back adversarial parameter".format(self.id, rn))
             self.unserialize_model(global_model)
-            for i in tqdm(range(param.ADVERSARY_ITERATION[rn]), desc="client {} round {} adversarial training : ".format(self.id, rn)):
+            for i in tqdm(range(param.ADVERSARY_ITERATION), desc="client {} round {} adversarial training : ".format(self.id, rn)):
                 self.fit_one_epoch(rn, i, rev=True, add_noise=False)
             theta = self.serialize_model()
             return theta
@@ -179,10 +179,29 @@ class DPSGD_client(Base_client):
             estimate_param = self.serialize_model()
             self.unserialize_model(global_model)
             param_after_agg = global_model
-            for i in tqdm(range(param.ADVERSARY_ITERATION[rn]), desc="client {} round {} adversarial training : ".format(self.id, rn)):
+            for i in tqdm(range(param.ADVERSARY_ITERATION), desc="client {} round {} adversarial training : ".format(self.id, rn)):
                 param_after_agg = self.fit_one_epoch(rn, i, rev=True, add_noise=False)
             param_adv = ( param_after_agg * (self.size - 1) - estimate_param * (self.size - 1 - len(param.BAD_CLIENTS)) )  / len(param.BAD_CLIENTS)
             return param_adv
+        elif mode == "front-total-loss":
+            logging.debug("Client {} generating round {} front adversarial parameter with total loss".format(self.id, rn))
+            self.unserialize_model(global_model)
+            for i in tqdm(range(param.N_EPOCH), desc="client {} round {} estimate training : ".format(self.id, rn)):
+                self.fit_one_epoch(rn, i, rev=False, add_noise=True)
+            estimate_param = self.serialize_model()
+            self.unserialize_model(global_model)
+            param_after_agg = global_model
+            for i in tqdm(range(param.ADVERSARY_ITERATION), desc="client {} round {} adversarial training : ".format(self.id, rn)):
+                param_after_agg = self.fit_one_epoch(rn, i, rev=True, add_noise=True)
+            param_adv = ( param_after_agg * (self.size - 1) - estimate_param * (self.size - 1 - len(param.BAD_CLIENTS)) )  / len(param.BAD_CLIENTS)
+            return param_adv
+        elif mode == "random-noise":
+            noise = self.GaussianNoise(param.SIGMA_ADV, global_model.shape)
+            norm = torch.norm(noise, p=2)
+            norm_bound = param.NORM_BOUND * param.LEARNING_RATE * param.ADVERSARY_ITERATION  * param.ADVERSARY_SCALE
+            logging.debug("Round {} noise norm {} with limit {}".format(rn, norm, norm_bound))
+            if norm > norm_bound: noise = noise.div(norm / norm_bound)
+            return global_model + noise
 
     def test_on_public(self, model):
         """
@@ -320,6 +339,9 @@ class DPSGD_client(Base_client):
                 self.send2server(bad_param)
             elif self.id in param.BAD_CLIENTS:
                 global_model = self.receive_global_model()
+                if param.TAPPING_SAME and self.id != param.BAD_CLIENTS[0]:
+                    self.send2server(global_model)
+                    continue
                 res = self.generate_bad_gradients(global_model, rn, mode=param.ATTACK_MODE)
                 self.send2server(res)
             else :

@@ -30,36 +30,35 @@ DIST_BACKEND = "gloo"
 
 #   Training hyper parameters
 # DATASET = "adult"
-#DATASET = "MNIST"
-#DATASET = "FashionMNIST"
-DATASET = "CIFAR10"
-#FOLDER = "iid_10_with_public"
-FOLDER = "dirichlet_20users_a500_seed98_public0.05"
+# FOLDER = "iid_30"
+DATASET = "MNIST"
+FOLDER = "dirichlet_20users_a100.0_seed98_public0.05"
+#FOLDER = "iid_20"
 DATA_AGUMENT = (DATASET == "CIFAR10")
 
 MODEL = "VGG_Mini"
-MODEL_PARAM = {"input_size":1024, "output_size": 10, "channel": 3}
+MODEL_PARAM = {"input_size":784, "output_size": 10, "channel": 1}
 
 # MODEL = "MLP"
 # MODEL_PARAM = {"input_size":13, "output_size": 2, "channel": 1}
 
-# FL Settings
 N_NODES = 21
-FL_RULE = "DPSGD"
-N_ROUND = 100
-N_EPOCH = 5
-KAP = [N_NODES - 1] * N_ROUND
+N_EPOCH = 1
 
 CRITERION = "CrossEntropy"
 OPTIMIZER = "SGD"
-BATCH_SIZE_TRAIN = 32
-BATCH_SIZE_TEST = 100
-LEARNING_RATE = 0.1
-LEARNING_RATE_LIST = [0.1] * N_ROUND
+BATCH_SIZE_TRAIN = 64
+BATCH_SIZE_TEST = 1000
+LEARNING_RATE = 0.003
+
+# FL Settings
+FL_RULE = "LDPFL"
+N_ROUND = 100
+KAP = [N_NODES - 1] * N_ROUND
 
 # LDP Settings
 LDP = True
-EPS = 0.75
+EPS = 0.72
 LATENCY_T = 10
 CLIENTS_WEIGHTS = [0] + [2] + [2] * (N_NODES - 2)
 
@@ -68,28 +67,20 @@ CLIPSIZE = 2.0
 
 # DPSGD
 USE_TRANSFORM = False
-NORM_BOUND = 4.0
-SIGMA = 0.5
-DELTA = 1e-4
-P = 0.1
+NORM_BOUND = 5.0
+SIGMA = 90.0
 
 # Multi-Krum
-MKRUM = False
+MKRUM = True
 BROKEN_CLIENTS = []  #broken clients, used for test whether krum work or not
 MAX_FAILURE = 8
 KRUM_SELECTED = 10
 
-
-#Trimmed Mean
-TRIMMED_MEAN = True
-TRIMMED_MEAN_BETA = int((N_NODES - 1) / 4)
-
 # Attack Settings
-BAD_CLIENTS = [1, 2]
+BAD_CLIENTS = []
 TAPPING_CLIENTS = BAD_CLIENTS
-#TAPPING_CLIENTS = []
-ATTACK_MODE = "back-total-loss"
-ADVERSARY_ITERATION = 10
-ADVERSARY_SCALE = [1.0] * N_ROUND
-ADVERSARY_NORM = 5.0
 TAPPING_SAME = True
+#TAPPING_CLIENTS = []
+ADVERSARY_ITERATION = 10
+ADVERSARY_NORM = 10.0
+ADVERSARY_SCALE = [1.3] + [100000000] + [10] + [1.0] * 100

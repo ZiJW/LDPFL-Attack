@@ -35,13 +35,13 @@ class Base_client(ABC):
         for x in sd:
             self.model_size.append(sd[x].numel())
 
-    def serialize_model_names(self, model_keys=None, type="concat"):
+    def serialize_model_names(self, model_keys=None, model=None, type="concat"):
         with torch.no_grad():
             res = []
             if model_keys == None:
                 model_keys = self.model.state_dict().keys()
             for name in model_keys:
-                val = self.model.state_dict()[name]
+                val = model.state_dict()[name]
                 res.append(val.view(-1))
             if type == "concat":
                 res = torch.cat(res)
@@ -64,9 +64,11 @@ class Base_client(ABC):
                 val.copy_(parameters[current_index: current_index + sz].view(val.shape))
                 current_index += sz
 
-    def serialize_model(self, type="concat") -> torch.Tensor:
-        model_keys = [name for name, _ in self.model.named_parameters()]
-        return self.serialize_model_names(model_keys=model_keys, type=type)
+    def serialize_model(self, type="concat", model=None) -> torch.Tensor:
+        if model == None:
+            model = self.model
+        model_keys = [name for name, _ in model.named_parameters()]
+        return self.serialize_model_names(model_keys=model_keys, model=model, type=type)
 
     def unserialize_model(self, parameters: torch.Tensor, model=None):
         if model == None:

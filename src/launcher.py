@@ -10,8 +10,8 @@ from server.Test_FL import Test_server
 from client.Test_FL import Test_client
 from server.FedAvg import FedAvg_server
 from client.FedAvg import FedAvg_client
-from server.CLDP import CLDP_server
-from client.CLDP import CLDP_client
+from server.PrivFL import PrivFL_server
+from client.PrivFL import PrivFL_client
 import torch.multiprocessing as mp
 def client_run(*args):
     set_random_seed(param.SEED)
@@ -21,7 +21,7 @@ def client_run(*args):
         "FedSel": FedSel_client,
         "Test": Test_client,
         "FedAvg": FedAvg_client,
-        "CLDP": CLDP_client
+        "PrivFL": PrivFL_client
     }
 
     A = clients.get(param.FL_RULE, lambda *args: None)(*args)
@@ -35,7 +35,7 @@ def server_run(*args):
         "FedSel": FedSel_server,
         "Test": Test_server,
         "FedAvg": FedAvg_server,
-        "CLDP": CLDP_server
+        "PrivFL": PrivFL_server
     }
 
     A= servers.get(param.FL_RULE, lambda *args: None)(*args)

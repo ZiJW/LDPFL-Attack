@@ -1,4 +1,5 @@
 import torch
+import torch.nn as nn
 import logging
 from geom_median.torch import compute_geometric_median 
 from base_client import Base_client
@@ -21,6 +22,14 @@ class Transf(torch.nn.Module):
         x = x.view(x.shape[0], -1)
         return torch.add(torch.mul(x, self.params['alpha']), self.params['beta'])
 
+class ChannelWiseAffine(nn.Module):
+    def __init__(self, c):
+        super().__init__()
+        self.a = nn.Parameter(torch.ones(1, c, 1, 1))
+        self.b = nn.Parameter(torch.zeros(1, c, 1, 1))
+
+    def forward(self, x):
+        return self.a * x + self.b
 
 class PrivFL_client(Base_client):  
     """
@@ -36,30 +45,43 @@ class PrivFL_client(Base_client):
         self.valid_loader = load_dataset(param.DATASET, param.FOLDER, [("public", False)])[0] if id in param.BAD_CLIENTS else []
         self.round = param.N_ROUND
         self.privacy1_percent = 0.1
-        self.layer0 = Transf(param.MODEL_PARAM["input_size"]).to(param.DEVICE)
+        #self.layer0 = Transf(param.MODEL_PARAM["input_size"]).to(param.DEVICE)
+        self.layer0 = ChannelWiseAffine(param.MODEL_PARAM["channel"]).to(param.DEVICE)
         self.ldp = param.LDP and self.id not in param.BAD_CLIENTS
         self.accountant = RDPAccountant()
 
         if self.id in param.BAD_CLIENTS:
             logging.info("Client {} is an adversary!".format(self.id))
+    
+    def serialize_model_full(self):
+        return torch.cat([self.serialize_model(type="concat", model=self.layer0), self.serialize_model()])
+    
+    def unserialize_model_full(self, parameters, layer0_size, model_size):
+        self.unserialize_model(parameters[:layer0_size], model=self.layer0)
+        self.unserialize_model(parameters[layer0_size:layer0_size + model_size])
 
     def fit(self, global_model, rn):
         self.unserialize_model(global_model)
+        layer0_size = sum(p.numel() for p in list(self.layer0.parameters()))
+        model_size = global_model.shape[0]
         for epoch in range(param.N_EPOCH):
-            theta = self.serialize_model()
-            gradients = torch.zeros(global_model.shape).to(param.DEVICE)
+            theta = self.serialize_model_full()
+            gradients = torch.zeros(layer0_size + model_size).to(param.DEVICE)
             sample_count = 0
             for (x, y) in self.train_loader:
                 if torch.rand(1).item() > param.P:
                     continue
                 x, y = x.to(DEVICE), y.to(DEVICE)
                 sample_count += len(x)
+                self.layer0.zero_grad()
                 self.model.zero_grad()
-                outputs = self.model(x)
+                outputs = self.model(self.layer0(x))
                 loss = self.criterion(outputs, y)
                 loss.backward()
                 
                 gradient = []
+                for val in self.layer0.parameters():
+                    gradient.append(val.grad.view(-1))
                 for val in self.model.parameters():
                     gradient.append(val.grad.view(-1))
                 gradient = torch.cat(gradient)
@@ -79,8 +101,8 @@ class PrivFL_client(Base_client):
             self.accountant.step(noise_multiplier=param.SIGMA, sample_rate=(sample_count / self.train_data_size))
             logging.debug("    Round {} epoch {} select {} / {} samples norm {}".format(rn, epoch, sample_count, self.train_data_size, norm))
             # Gradient descent step
-            self.unserialize_model(theta - param.LEARNING_RATE * gradients)
-        logging.debug("Round {} finished training with eps {}".format( rn, self.accountant.get_epsilon(delta=param.DELTA)))
+            self.unserialize_model_full(theta - param.LEARNING_RATE * gradients, layer0_size, model_size)
+        if rn == param.N_ROUND - 1 : logging.debug("Round {} finished training with eps {}".format( rn, self.accountant.get_epsilon(delta=param.DELTA)))
         return self.serialize_model()
 
     def fit_one_epoch(self, rn, epoch, rev=False, add_noise=False):
@@ -121,18 +143,18 @@ class PrivFL_client(Base_client):
         return self.serialize_model()
 
     def generate_bad_gradients(self, global_model, rn, mode='front'):
-        assert mode in {"front", "back", "front-norm-bound", "back-total-loss"}
-        if mode.startswith("front"):
+        assert mode in {"front", "back", "front-total-loss", "back-total-loss", "random-noise"}
+        if mode == "front":
             logging.debug("Client {} generating round {} front adversarial parameter".format(self.id, rn))
             self.unserialize_model(global_model)
-            for i in tqdm(range(param.ADVERSARY_ITERATION[rn]), desc="client {} round {} adversarial training : ".format(self.id, rn)):
+            for i in tqdm(range(param.ADVERSARY_ITERATION), desc="client {} round {} adversarial training : ".format(self.id, rn)):
                 self.fit_one_epoch(rn, i, rev=True, add_noise=True)
             theta = self.serialize_model()
             return theta
         elif mode == "back":
             logging.debug("Client {} generating round {} back adversarial parameter".format(self.id, rn))
             self.unserialize_model(global_model)
-            for i in tqdm(range(param.ADVERSARY_ITERATION[rn]), desc="client {} round {} adversarial training : ".format(self.id, rn)):
+            for i in tqdm(range(param.ADVERSARY_ITERATION), desc="client {} round {} adversarial training : ".format(self.id, rn)):
                 self.fit_one_epoch(rn, i, rev=True, add_noise=False)
             theta = self.serialize_model()
             return theta
@@ -144,11 +166,30 @@ class PrivFL_client(Base_client):
             estimate_param = self.serialize_model()
             self.unserialize_model(global_model)
             param_after_agg = global_model
-            for i in tqdm(range(param.ADVERSARY_ITERATION[rn]), desc="client {} round {} adversarial training : ".format(self.id, rn)):
+            for i in tqdm(range(param.ADVERSARY_ITERATION), desc="client {} round {} adversarial training : ".format(self.id, rn)):
                 param_after_agg = self.fit_one_epoch(rn, i, rev=True, add_noise=False)
             param_adv = ( param_after_agg * (self.size - 1) - estimate_param * (self.size - 1 - len(param.BAD_CLIENTS)) )  / len(param.BAD_CLIENTS)
             return param_adv
-
+        elif mode == "front-total-loss":
+            logging.debug("Client {} generating round {} front adversarial parameter with total loss".format(self.id, rn))
+            self.unserialize_model(global_model)
+            for i in tqdm(range(param.N_EPOCH), desc="client {} round {} estimate training : ".format(self.id, rn)):
+                self.fit_one_epoch(rn, i, rev=False, add_noise=True)
+            estimate_param = self.serialize_model()
+            self.unserialize_model(global_model)
+            param_after_agg = global_model
+            for i in tqdm(range(param.ADVERSARY_ITERATION), desc="client {} round {} adversarial training : ".format(self.id, rn)):
+                param_after_agg = self.fit_one_epoch(rn, i, rev=True, add_noise=True)
+            param_adv = ( param_after_agg * (self.size - 1) - estimate_param * (self.size - 1 - len(param.BAD_CLIENTS)) )  / len(param.BAD_CLIENTS)
+            return param_adv
+        elif mode == "random-noise":
+            noise = self.GaussianNoise(param.SIGMA_ADV, global_model.shape)
+            norm = torch.norm(noise, p=2)
+            norm_bound = param.NORM_BOUND * param.LEARNING_RATE * param.ADVERSARY_ITERATION  * param.ADVERSARY_SCALE
+            logging.debug("Round {} noise norm {} with limit {}".format(rn, norm, norm_bound))
+            if norm > norm_bound: noise = noise.div(norm / norm_bound)
+            return global_model + noise
+    
     def test_on_public(self, model):
         """
             Test the accuracy and loss on validation dataset.
@@ -234,6 +275,7 @@ class PrivFL_client(Base_client):
                 torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=param.ADVERSARY_NORM)
                 self.optimizer.step()
             #norm clip
+            #self.fit_one_epoch(rn, 1, rev=True, add_noise=False)
             theta_adv = self.serialize_model()
             logging.debug("Client {} round {}.{} parameter {}".format(self.id, rn, i, theta_adv))
             diff = theta_adv - median
@@ -255,6 +297,17 @@ class PrivFL_client(Base_client):
         clip_mini, clip_maxi = select.min(dim=0).values, select.max(dim=0).values
         # 训练 self.model，使其沿 loss 取反方向优化
         for i in tqdm(range(param.ADVERSARY_ITERATION), desc="client {} round {} adversarial training : ".format(self.id, rn)):
+            """for data, target in self.train_loader:
+                data, target = data.to(DEVICE), target.to(DEVICE)
+
+                self.optimizer.zero_grad()
+                output = self.model(data)
+
+                # 计算 loss（取反方向优化）
+                loss = -self.criterion(output, target)
+                loss.backward()
+                torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=param.ADVERSARY_NORM)
+                self.optimizer.step()"""
             self.fit_one_epoch(rn, 1, rev=True, add_noise=False)
             theta_adv = self.serialize_model()
             theta_fit_adv = torch.clamp(theta_adv, min=clip_mini, max=clip_maxi)
@@ -285,6 +338,9 @@ class PrivFL_client(Base_client):
                 self.send2server(bad_param)
             elif self.id in param.BAD_CLIENTS:
                 global_model = self.receive_global_model()
+                if param.TAPPING_SAME and self.id != param.BAD_CLIENTS[0]:
+                    self.send2server(global_model)
+                    continue
                 res = self.generate_bad_gradients(global_model, rn, mode=param.ATTACK_MODE)
                 self.send2server(res)
             else :

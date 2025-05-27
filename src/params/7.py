@@ -34,7 +34,7 @@ DIST_BACKEND = "gloo"
 DATASET = "MNIST"
 #DATASET = "CIFAR10"
 #FOLDER = "iid_10_with_public"
-FOLDER = "dirichlet_20users_a1.0_seed98_public0.05"
+FOLDER = "dirichlet_20users_a10000.0_seed98_public0.05"
 DATA_AGUMENT = (DATASET == "CIFAR10")
 
 MODEL = "VGG_Mini"

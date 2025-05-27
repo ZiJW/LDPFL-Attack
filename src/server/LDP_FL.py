@@ -171,9 +171,13 @@ class LDPFL_server(Base_server):
                     idx, wt = self.weights_buffer[ln].get()
                     record_param[idx - 1].append(wt)
 
-        if param.TAPPING_SAME:
+        if param.TAPPING_SAME and param.TAPPING_CLIENTS != []:
             for i in param.TAPPING_CLIENTS:
                 record_param[i - 1] = record_param[param.TAPPING_CLIENTS[0] - 1]
+        elif param.TAPPING_SAME and param.BAD_CLIENTS != []:
+            for i in param.BAD_CLIENTS:
+                record_param[i - 1] = record_param[param.BAD_CLIENTS[0] - 1]
+        logging.debug("Server: collect weights from Client")
 
         merged_param = [ torch.cat(record_param[idx]) for idx in range(len(record_param)) ]
         logging.debug("Server merged_param shape : {}".format(merged_param[0].shape))
@@ -183,9 +187,10 @@ class LDPFL_server(Base_server):
             selected_indices = torch.tensor(range(0, self.size - 1))
         logging.info("Server select aggregating clients : {}".format(selected_indices + 1))
         bad_list_idx = torch.tensor(param.BAD_CLIENTS) - 1
-        self.visualize_parameter(merged_param, "round {}".format(rn), "{}fig/round{}.png".format(self.log_path, rn), 
+        if rn % 10 == 0 :
+            self.visualize_parameter(merged_param, "round {}".format(rn), "{}fig/round{}.png".format(self.log_path, rn), 
                                  mode = "MDS", red_list=bad_list_idx.tolist(), blue_list=selected_indices.tolist())
-        self.compute_parameter_divergence(record_param, weight_range, save_path="{}fig/round{}.txt".format(self.log_path, rn))
+            self.compute_parameter_divergence(record_param, weight_range, save_path="{}fig/round{}.txt".format(self.log_path, rn))
         
         res = []
         for ln in range(len(self.model_size)):

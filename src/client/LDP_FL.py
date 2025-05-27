@@ -97,6 +97,15 @@ class LDPFL_client(Base_client):
             self.unserialize_model(global_model)
             self.fit_one_epoch(rev=True)
             return self.handle_weights(weight_range, param.EPS)
+        elif mode == "front-total-loss":
+            logging.debug("Client {} generating round {} back adversarial parameter with total loss".format(self.id, rn))
+            self.unserialize_model(global_model)
+            estimate_param = self.fit_one_epoch(rev=False)
+            self.unserialize_model(global_model)
+            param_after_agg = self.fit_one_epoch(rev=True)
+            param_adv = ( param_after_agg * (self.size - 1) - estimate_param * (self.size - 1 - len(param.BAD_CLIENTS)) )  / len(param.BAD_CLIENTS)
+            self.unserialize_model(param_adv)
+            return self.handle_weights(weight_range, param.EPS)
         elif mode == 'back-total-loss':
             logging.debug("Client {} generating round {} back adversarial parameter with total loss".format(self.id, rn))
             self.unserialize_model(global_model)
@@ -110,6 +119,16 @@ class LDPFL_client(Base_client):
             self.unserialize_model(global_model)
             param_adv = self.fit_one_epoch(rev=True)
             return self.clip_2val(self.flatten2layer(param_adv), weight_range)
+        elif mode == "random-noise":
+            #return self.flatten2layer(torch.zeros(global_model.shape, device=DEVICE))
+            random_posneg = torch.randint(0, 2, global_model.shape).to(DEVICE) * 2 - 1 
+            random_posneg = self.flatten2layer(random_posneg)
+            eps = param.EPS
+            for idx in range(len(random_posneg)):
+                coff = (math.exp(eps) + 1) / (math.exp(eps) - 1)
+                c, r = weight_range[idx]["center"], weight_range[idx]["range"]
+                random_posneg[idx] = c + random_posneg[idx] * r * coff
+            return random_posneg
 
     def receive_global_model_range(self):
         global_model, weight_range = self.comm.recv(0)
@@ -310,8 +329,9 @@ class LDPFL_client(Base_client):
         # === 4. 合并并选 top-k ===
         flat_scores = torch.cat(offset_scores)
         flat_mask = torch.cat(offset_masks)
+        max_diff = flat_mask.sum().item()
         flat_valid_scores = flat_scores * flat_mask.float()  # 不合法位置得分为0
-        topk_val, topk_idx = torch.topk(flat_valid_scores, topk)
+        topk_val, topk_idx = torch.topk(flat_valid_scores, min(max_diff, topk))
         critical_mask = torch.zeros_like(flat_scores, dtype=torch.bool)
         critical_mask[topk_idx] = True
 
@@ -450,6 +470,9 @@ class LDPFL_client(Base_client):
                     if self.id in param.TAPPING_CLIENTS:
                         global_model, weight_range = self.receive_global_model_range()
                         good_params = self.receive_other_parameters()
+                        if param.TAPPING_SAME and self.id != param.TAPPING_CLIENTS[0]:
+                            self.send_weights(self.flatten2layer(global_model))
+                            continue
                         max_allow_diff_dim = self.get_min_diff(weight_range, good_params, rn, k=1)
                         adv_param = self.generate_bad_param_selective(global_model, weight_range, good_params, rn, 
                                                                       topk=int(param.ADVERSARY_SCALE[rn] * max_allow_diff_dim))

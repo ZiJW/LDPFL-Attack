@@ -23,7 +23,7 @@ LOG_NAME = strftime("%Y-%m-%d_%H-%M/", localtime())
 
 COMM = "fake_socket"
 IP_ADDRESS = "127.0.0.1"
-IP_PORT = "11418"
+IP_PORT = "11417"
 
 BUFFER_SIZE = 8192
 DIST_BACKEND = "gloo"
@@ -31,23 +31,23 @@ DIST_BACKEND = "gloo"
 #   Training hyper parameters
 # DATASET = "adult"
 #DATASET = "MNIST"
-#DATASET = "FashionMNIST"
-DATASET = "CIFAR10"
+DATASET = "MNIST"
+#DATASET = "CIFAR10"
 #FOLDER = "iid_10_with_public"
-FOLDER = "dirichlet_20users_a500_seed98_public0.05"
+FOLDER = "dirichlet_20users_a1.0_seed98_public0.05"
 DATA_AGUMENT = (DATASET == "CIFAR10")
 
 MODEL = "VGG_Mini"
-MODEL_PARAM = {"input_size":1024, "output_size": 10, "channel": 3}
+MODEL_PARAM = {"input_size":784, "output_size": 10, "channel": 1}
 
 # MODEL = "MLP"
 # MODEL_PARAM = {"input_size":13, "output_size": 2, "channel": 1}
 
 # FL Settings
 N_NODES = 21
-FL_RULE = "DPSGD"
+FL_RULE = "PrivFL"
 N_ROUND = 100
-N_EPOCH = 5
+N_EPOCH = 1
 KAP = [N_NODES - 1] * N_ROUND
 
 CRITERION = "CrossEntropy"
@@ -68,13 +68,13 @@ CLIPSIZE = 2.0
 
 # DPSGD
 USE_TRANSFORM = False
-NORM_BOUND = 4.0
-SIGMA = 0.5
+NORM_BOUND = 5.0
+SIGMA = 0.8
 DELTA = 1e-4
 P = 0.1
 
 # Multi-Krum
-MKRUM = False
+MKRUM = True
 BROKEN_CLIENTS = []  #broken clients, used for test whether krum work or not
 MAX_FAILURE = 8
 KRUM_SELECTED = 10
@@ -86,10 +86,9 @@ TRIMMED_MEAN_BETA = int((N_NODES - 1) / 4)
 
 # Attack Settings
 BAD_CLIENTS = [1, 2]
-#TAPPING_CLIENTS = BAD_CLIENTS
-TAPPING_CLIENTS = []
-ATTACK_MODE = "back"
-ADVERSARY_ITERATION = [10] * N_ROUND
+ADVERSARY_ITERATION = 10
 ADVERSARY_SCALE = [1.0] * N_ROUND
-ADVERSARY_NORM = 5.0
+ADVERSARY_NORM = 10.0
+TAPPING_CLIENTS = BAD_CLIENTS
+#TAPPING_CLIENTS = []
 TAPPING_SAME = True

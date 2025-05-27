@@ -23,7 +23,7 @@ LOG_NAME = strftime("%Y-%m-%d_%H-%M/", localtime())
 
 COMM = "fake_socket"
 IP_ADDRESS = "127.0.0.1"
-IP_PORT = "11418"
+IP_PORT = "11417"
 
 BUFFER_SIZE = 8192
 DIST_BACKEND = "gloo"
@@ -45,7 +45,7 @@ MODEL_PARAM = {"input_size":784, "output_size": 10, "channel": 1}
 
 # FL Settings
 N_NODES = 21
-FL_RULE = "PrivFL"
+FL_RULE = "DPSGD"
 N_ROUND = 100
 N_EPOCH = 1
 KAP = [N_NODES - 1] * N_ROUND
@@ -85,7 +85,7 @@ TRIMMED_MEAN = False
 TRIMMED_MEAN_BETA = int((N_NODES - 1) / 4)
 
 # Attack Settings
-BAD_CLIENTS = [1, 2, 3]
+BAD_CLIENTS = []
 ADVERSARY_ITERATION = 10
 ADVERSARY_SCALE = [1.0] * N_ROUND
 ADVERSARY_NORM = 10.0
